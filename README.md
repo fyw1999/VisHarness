@@ -28,6 +28,23 @@ published production workers are `PhraseToPoint`, `PhraseToBoxMask`,
 `PointToBoxMask`, `SplitImageIntoPatches`, `SuperResolution`, and
 `MergeBoxMask`.
 
+| Tool | Model used by the published worker | Official download |
+| --- | --- | --- |
+| `PhraseToPoint` | Molmo2-4B | [allenai/Molmo2-4B](https://huggingface.co/allenai/Molmo2-4B) |
+| `PhraseToBoxMask` | SAM 3 image model (`sam3.pt`) | [facebook/sam3](https://huggingface.co/facebook/sam3) |
+| `PointToBoxMask` | SAM 3 image model (`sam3.pt`) | [facebook/sam3](https://huggingface.co/facebook/sam3) |
+| `SplitImageIntoPatches` | No learned model; deterministic image tiling | Not applicable |
+| `SuperResolution` | Real-ESRGAN (`realesr-general-x4v3.pth` and `realesr-general-wdn-x4v3.pth`) with GFPGAN (`GFPGANv1.3.pth`) | [Real-ESRGAN x4v3](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth), [Real-ESRGAN WDN x4v3](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-wdn-x4v3.pth), and [GFPGAN v1.3](https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.3.pth) |
+| `MergeBoxMask` | No learned model; deterministic coordinate and mask merging | Not applicable |
+
+SAM 3 requires accepting the model's access conditions on Hugging Face before
+downloading `sam3.pt`; its official implementation and setup instructions are
+available in the [SAM 3 repository](https://github.com/facebookresearch/sam3).
+With the published `SuperResolution` defaults, place all three listed
+checkpoints in the same directory and retain their original filenames. The
+worker derives the WDN and GFPGAN paths from the configured
+`realesr-general-x4v3.pth` path.
+
 Edit the paths, environments, GPU assignments, controller address, and model
 locations in these templates:
 
