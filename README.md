@@ -21,11 +21,6 @@ cd VisHarness
 python -m pip install -e '.[evaluation,tools,dev]'
 ```
 
-Install GPU-specific packages such as vLLM, FlashAttention, SAM3,
-Real-ESRGAN, and `ms-swift` against the CUDA/PyTorch versions used by the
-target machine. Those projects and their model weights retain their own
-licenses.
-
 ## Visual-tool services
 
 VisHarness uses a controller plus independently deployable tool workers. The
