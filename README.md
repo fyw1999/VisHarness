@@ -1,13 +1,15 @@
 # VisHarness
 
-VisHarness is a multimodal tool-using agent framework for inference,
-trajectory generation, evaluation, and supervised fine-tuning (SFT). It
-connects OpenAI-compatible multimodal language-model endpoints to visual tools
-for point localization, detection/segmentation, image splitting, super
-resolution, and result merging.
+This is the official code repository for
+[*Train the Agent, Not the Expert: Learning to Harness Heterogeneous Experts
+for Multi-Turn Visual Reasoning*](https://arxiv.org/abs/2605.29894).
 
-This public repository contains the inference and SFT pipeline. Model weights,
-datasets, generated trajectories, and training checkpoints are not included.
+The current release includes the code for inference, SFT data generation, and
+SFT training. The reinforcement learning (RL) code is not included in this
+release and will be made available in a future update.
+
+Model weights, datasets, generated trajectories, and training checkpoints are
+not included.
 
 ## Installation
 
