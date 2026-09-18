@@ -1,0 +1,43 @@
+mode: inference
+model_args:
+  model_name: Qwen3-VL-8B
+  tokenizer_path: /path/to/Qwen3-VL-8B-Thinking
+  base_url: http://localhost:8000/v1
+  api_key: EMPTY
+
+batch_size: 12
+max_rounds: 12
+# true: dynamic archive; false: retain every historical visual image.
+archive_previous_images: true
+
+benchmark:
+  enabled: false
+  gpu_indices: [0, 1]
+  # Must match the vLLM server's -tp/--tensor-parallel-size value.
+  tensor_parallel_size: 2
+  sample_interval_seconds: 0.2
+  save_resource_trace: true
+
+generation_args:
+  max_tokens: 2048
+  temperature: 0.6
+  top_p: 0.95
+  presence_penalty: 0.0
+  timeout: 300
+  extra_body:
+    top_k: 20
+    min_p: 0.0
+    repetition_penalty: 1.0
+    # return_token_ids: True
+
+dataset_args:
+  task_names:
+    REC8K
+  split: val
+  dataset_path: /path/to/REC-8K
+  resume_from_ckpt:
+  save_path: outputs/inference/qwen3vl-8b-rec8k-val
+  save_trajectory: False
+  num_sample: null
+
+verbosity: INFO

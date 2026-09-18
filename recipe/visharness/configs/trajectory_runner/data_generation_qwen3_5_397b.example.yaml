@@ -1,0 +1,39 @@
+mode: data_generation
+model_args:
+  model_name: Qwen3.5-397B-A17B-FP8
+  base_url: http://localhost:8000/v1
+  api_key: EMPTY
+  max_retries: 0
+
+batch_size: 25
+max_rounds: 12
+
+generation_args:
+  max_tokens: 4096
+  temperature: 0.6
+  top_p: 0.95
+  presence_penalty: 0.0
+  timeout: 1000
+  extra_body:
+    top_k: 20
+    min_p: 0.0
+    repetition_penalty: 1.0
+    return_token_ids: False
+
+dataset_args:
+  task_names:
+    ReasonSeg
+    GRES
+    REC8K
+  split: train
+  dataset_path: /path/to/VisionAgent-4K
+  resume_from_ckpt:
+    # Skip samples already accepted from the Kimi pass.
+    - outputs/data_generation/Kimi-K2.5-VisionAgent-4K/accepted_ids.jsonl
+    # Keep this entry only when resuming an interrupted Qwen pass.
+    - outputs/data_generation/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_ckpt.jsonl
+  save_path: outputs/data_generation/Qwen3.5-397B-A17B-FP8-VisionAgent-4K
+  save_trajectory: True
+  num_sample: null
+
+verbosity: INFO

@@ -1,0 +1,31 @@
+mode: data_generation
+model_args:
+  model_name: moonshotai/Kimi-K2.5
+  base_url: http://localhost:8000/v1
+  api_key: EMPTY
+  timeout: 1000
+
+batch_size: 25
+max_rounds: 12
+
+generation_args:
+  max_tokens: 4096
+  temperature: 0.7
+  top_p: 0.95
+  # extra_body:
+  #   return_token_ids: True
+
+dataset_args:
+  task_names:
+    ReasonSeg
+    GRES
+    REC8K
+  split: train
+  dataset_path: /path/to/VisionAgent-4K
+  # Add the existing checkpoint here when resuming an interrupted run.
+  resume_from_ckpt:
+  save_path: outputs/data_generation/Kimi-K2.5-VisionAgent-4K
+  save_trajectory: True
+  num_sample: null
+
+verbosity: INFO

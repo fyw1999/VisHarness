@@ -1,0 +1,45 @@
+# Controller and CPU-only tools. Replace the paths for the local machine.
+base_dir: /path/to/VisHarness/tool_server/tool_workers
+log_folder: /path/to/VisHarness/tool_server/tool_workers/logs/server_log
+conda_env: /path/to/conda/envs/VisionAgent
+default_calculate_gpus: 1
+default_calculate_cpus: 16
+default_control_cpus: 2
+default_control_gpus: 0
+retry_interval: 1
+request_timeout: 10
+
+controller_config:
+  worker_name: controller
+  job_name: controller
+  calculate_type: control
+  cmd:
+    script-addr: ./online_workers/controller.py
+    port: 20001
+    host: "0.0.0.0"
+
+tool_worker_config:
+  - SplitImageIntoPatches:
+      SplitImageIntoPatches_local_1:
+        calculate_type: control
+        cmd:
+          limit-model-concurrency: 20
+          cpu-worker-threads: 8
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/split_image_into_patches.py
+          port: 20036
+          host: "0.0.0.0"
+
+  - MergeBoxMask:
+      MergeBoxMask_local_1:
+        calculate_type: control
+        cmd:
+          limit-model-concurrency: 20
+          cpu-worker-threads: 8
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/merge_box_mask_worker.py
+          port: 20037
+          host: "0.0.0.0"
+          iou-threshold: 0.8
+          fragment-overlap-ratio: 0.2
+          fragment-edge-margin-ratio: 0.03

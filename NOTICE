@@ -1,0 +1,18 @@
+VisHarness
+Copyright 2026 VisHarness contributors
+
+This distribution integrates with or contains interfaces derived from a
+number of third-party projects. Their software, models, and datasets remain
+subject to their respective licenses and terms, including:
+
+- vLLM: https://github.com/vllm-project/vllm
+- ms-swift: https://github.com/modelscope/ms-swift
+- SAM 3: https://github.com/facebookresearch/sam3
+- Molmo: https://huggingface.co/allenai/Molmo2-4B
+- Real-ESRGAN: https://github.com/xinntao/Real-ESRGAN
+- Qwen: https://github.com/QwenLM/Qwen3-VL
+- Kimi: https://huggingface.co/moonshotai/Kimi-K2.5
+
+Model weights and datasets are not distributed with this repository. Users
+are responsible for obtaining them and complying with their licenses and
+applicable dataset terms.

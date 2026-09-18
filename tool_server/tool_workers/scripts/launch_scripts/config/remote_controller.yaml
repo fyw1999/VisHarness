@@ -1,0 +1,80 @@
+# GPU-backed tools. Start the controller first and replace paths, environments,
+# GPU assignments, controller host, and model paths for the deployment.
+base_dir: /path/to/VisHarness/tool_server/tool_workers
+log_folder: /path/to/VisHarness/tool_server/tool_workers/logs/server_log
+conda_env: /path/to/conda/envs/VisionAgent
+default_calculate_gpus: 1
+default_calculate_cpus: 16
+default_control_cpus: 2
+default_control_gpus: 0
+retry_interval: 1
+request_timeout: 10
+
+tool_worker_config:
+  - PhraseToPoint:
+      PhraseToPoint_gpu_1:
+        calculate_type: control
+        conda_env: /path/to/conda/envs/Molmo
+        cuda_visible_devices: "0"
+        cmd:
+          limit-model-concurrency: 16
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/phrase_to_points_vllm_worker.py
+          port: 8100
+          host: "0.0.0.0"
+          model-path: /path/to/Molmo2-4B
+          max_tokens: 4092
+          max_batch_size: 10
+          gpu_memory_utilization: 0.8
+          max_num_batched_tokens: 60000
+
+  - PhraseToBoxMask:
+      PhraseToBoxMask_gpu_1:
+        calculate_type: control
+        conda_env: /path/to/conda/envs/SAM
+        cuda_visible_devices: "1"
+        cmd:
+          limit-model-concurrency: 16
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/phrase_to_box_mask_worker.py
+          port: 8102
+          host: "0.0.0.0"
+          model-path: /path/to/SAM3/sam3.pt
+          max_batch_size: 8
+          batch_wait_ms: 50
+          max_queries_per_batch: 8
+          mask_chunk_size: 0
+          mask_postprocess_budget_mb: 2048
+
+  - PointToBoxMask:
+      PointToBoxMask_gpu_1:
+        calculate_type: control
+        conda_env: /path/to/conda/envs/SAM
+        cuda_visible_devices: "2"
+        cmd:
+          limit-model-concurrency: 8
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/point_to_box_mask_worker.py
+          port: 8104
+          host: "0.0.0.0"
+          model-path: /path/to/SAM3/sam3.pt
+          max_batch_size: 4
+          batch_wait_ms: 50
+          max_points_per_forward_confidence: 96
+          max_points_per_forward_area: 32
+          point_mask_postprocess_budget_mb: 2048
+
+  - SuperResolution:
+      SuperResolution_gpu_1:
+        calculate_type: control
+        conda_env: /path/to/conda/envs/SuperResolution
+        cuda_visible_devices: "3"
+        cmd:
+          limit-model-concurrency: 4
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/super_resolution_worker.py
+          port: 8106
+          host: "0.0.0.0"
+          model-path: /path/to/Real-ESRGAN/realesr-general-x4v3.pth
+          max_batch_size: 2
+          batch_wait_ms: 30
