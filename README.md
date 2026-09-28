@@ -259,4 +259,4 @@ Then run the training script from the project root:
 
 ```bash
 bash recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh
-break
+```

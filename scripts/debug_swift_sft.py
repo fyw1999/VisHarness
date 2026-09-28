@@ -88,4 +88,4 @@ while True:
     print("\n" + "="*30 + " [Supervised text (decoded labels)] " + "="*30, flush=True)
     print(loss_text, flush=True)
     print("="*80 + "\n", flush=True)
-    os.system("cls" if os.name == "nt" else "clear")
+    break
