@@ -261,6 +261,11 @@ Then run the training script from the project root:
 bash recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh
 ```
 
+With the configuration above, training for one epoch on our 13,323-sample SFT
+dataset takes approximately 2 hours and 45 minutes (roughly 3 hours) on eight
+NVIDIA A100-SXM4-80GB GPUs. The actual runtime depends on the hardware, dataset
+size, and training configuration.
+
 To inspect the data that will be passed to the model during SFT, set
 `model_id_or_path` and `dataset_path` in `scripts/debug_swift_sft.py`, then run
 the script from the project root:
