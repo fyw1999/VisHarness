@@ -261,8 +261,6 @@ Then run the training script from the project root:
 bash recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh
 ```
 
-## Inspect an SFT Training Sample
-
 To inspect the data that will be passed to the model during SFT, set
 `model_id_or_path` and `dataset_path` in `scripts/debug_swift_sft.py`, then run
 the script from the project root:
