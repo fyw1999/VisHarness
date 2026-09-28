@@ -86,14 +86,14 @@ def get_downsample_factor(img_name):
         base_name = img_name.rsplit('.', 1)[0]
     else:
         base_name = img_name
-
+        
     super_res_count = 0
     while base_name.endswith('_4x'):
         super_res_count += 1
         base_name = base_name[:-3]
-
+        
     downsample_factor = 4 ** super_res_count
-
+    
     return downsample_factor
 
 def show_bboxes(image, box_coords, image_name, width_ratio=0.003):
@@ -108,12 +108,12 @@ def show_bboxes(image, box_coords, image_name, width_ratio=0.003):
     draw = ImageDraw.Draw(image)
     img_width, img_height = image.size
     adaptive_width = max(3, int((img_width + img_height) / 2 * width_ratio))
-
+    
     for box in box_coords:
         x0, y0, x1, y1 = box[0], box[1], box[2], box[3]
         draw.rectangle(
-            [x0, y0, x1, y1],
-            outline='green',
+            [x0, y0, x1, y1], 
+            outline='green', 
             width=adaptive_width
         )
     return image
@@ -145,8 +145,8 @@ def filter_valid_box_masks(bboxes, masks_nhw):
     return np.asarray(valid_bboxes, dtype=np.float32), np.asarray(valid_masks, dtype=bool)
 
 class PointToBoxMaskWorker(BaseToolWorker):
-    def __init__(self,
-                 controller_addr,
+    def __init__(self, 
+                 controller_addr, 
                  worker_name = "",
                  worker_addr = "auto",
                  no_register = False,
@@ -198,7 +198,7 @@ class PointToBoxMaskWorker(BaseToolWorker):
 
     def init_model(self):
         logger.info(f"Initializing model {self.tool_name}...")
-
+        
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
             self.use_bfloat16 = torch.cuda.is_bf16_supported()
@@ -554,7 +554,7 @@ class PointToBoxMaskWorker(BaseToolWorker):
                 True,
                 img_idx=image_index,
             )
-            masks, scores, low_res_masks = predictor._predict(
+            masks, _, _ = predictor._predict(
                 coords,
                 labels,
                 box,
@@ -570,8 +570,6 @@ class PointToBoxMaskWorker(BaseToolWorker):
             # GPU before the historical float32 conversion so a full-size
             # float copy is never allocated on CUDA.
             masks_numpy = masks.squeeze(0).detach().cpu().float().numpy()
-            scores = None
-            low_res_masks = None
             return masks_numpy
 
     @staticmethod
@@ -870,7 +868,7 @@ class PointToBoxMaskWorker(BaseToolWorker):
         raise torch.cuda.OutOfMemoryError(
             f"PointToBoxMask OOM while processing image {image_name}: {oom_message}"
         )
-
+        
     def _generate_serial(self, params):
         image_dict = params.get("image_dict", None)
         mode = str(params.get("mode", "confidence")).lower()
@@ -882,7 +880,7 @@ class PointToBoxMaskWorker(BaseToolWorker):
                 "message": f"Unsupported mode: {mode}. Supported modes are 'confidence' and 'area'.",
                 "status": "error",
             }
-
+        
         ret = {"message": "", "status": ""}
         needs_cuda_cleanup = False
         results = None
@@ -892,7 +890,7 @@ class PointToBoxMaskWorker(BaseToolWorker):
         try:
             max_batch_size = self.max_batch_size
             results = {}
-            image_items = list(image_dict.items())
+            image_items = list(image_dict.items()) 
             total_images = len(image_items)
             logger.info(f"Total images: {total_images}. Using max_batch_size: {max_batch_size}")
 

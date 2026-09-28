@@ -235,7 +235,7 @@ def _validated_tool_call(
     )
 
 
-def _resolved_image_path(root: Path, relative_path: str) -> Path:
+def _normalized_relative_image_path(relative_path: str) -> str:
     posix_path = PurePosixPath(relative_path.replace("\\", "/"))
     if posix_path.is_absolute() or any(
         part in {"", ".", ".."} for part in posix_path.parts
@@ -243,6 +243,11 @@ def _resolved_image_path(root: Path, relative_path: str) -> Path:
         raise ValueError(
             f"Image path must be a safe relative path, got {relative_path!r}"
         )
+    return posix_path.as_posix()
+
+
+def _resolved_image_path(root: Path, relative_path: str) -> Path:
+    posix_path = PurePosixPath(_normalized_relative_image_path(relative_path))
     path = root.joinpath(*posix_path.parts).resolve()
     root_resolved = root.resolve()
     if path != root_resolved and root_resolved not in path.parents:
@@ -288,10 +293,10 @@ def convert_snapshot_to_swift(
         )
 
     image_root = Path(image_root_dir)
-    images = [
-        str(_resolved_image_path(image_root, relative_path))
-        for relative_path in snapshot["images"]
-    ]
+    images = []
+    for relative_path in snapshot["images"]:
+        _resolved_image_path(image_root, relative_path)
+        images.append(_normalized_relative_image_path(relative_path))
     output: dict[str, Any] = {
         "messages": [],
         "images": images,
@@ -409,10 +414,14 @@ def convert_to_swift_format(
             )
             if visual_budget is not None:
                 assert decisions is not None
+                resolved_image_paths = [
+                    str(_resolved_image_path(image_root, relative_path))
+                    for relative_path in converted["images"]
+                ]
                 decision = _visual_budget_decision(
                     snapshot_id=str(snapshot["id"]),
                     line_number=line_number,
-                    image_paths=converted["images"],
+                    image_paths=resolved_image_paths,
                     budget=visual_budget,
                     cost_cache=cost_cache,
                 )

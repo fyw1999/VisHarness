@@ -1,6 +1,7 @@
 import base64
 import json
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -14,6 +15,7 @@ from openai.types.chat.chat_completion_message_function_tool_call import (
 from PIL import Image
 
 from visharness.agent_loop.tool_response_processor import build_error_observation
+from visharness.trajectory_runner import config as trajectory_config
 from visharness.prompts import (
     PHRASE_TO_BOXMASK_PROMPT,
     PHRASE_TO_POINT_PROMPT,
@@ -27,6 +29,7 @@ from visharness.trajectory_runner.benchmark import (
     _parse_prometheus_metric_labels,
 )
 from visharness.trajectory_runner.dataset import TrajectoryDataset
+from visharness.trajectory_runner.evaluator import _resolve_save_path
 from visharness.trajectory_runner.inferencer import (
     BaseTrajectoryInferencer,
     SyncToolCaller,
@@ -50,6 +53,14 @@ from visharness.trajectory_runner.serializer import (
     strip_tool_response_wrapper,
 )
 from visharness.tools.errors import ToolOOMRetriesExhaustedError
+
+
+def test_resolve_save_path_uses_project_root_for_relative_paths(tmp_path):
+    absolute_path = tmp_path / "trajectory-output"
+    relative_path = Path("training_data/SFT/Kimi-K2.5-VisionAgent-4K")
+
+    assert _resolve_save_path(absolute_path) == absolute_path
+    assert _resolve_save_path(relative_path) == trajectory_config.PROJECT_ROOT / relative_path
 
 
 def image_bytes(color="red"):
@@ -664,6 +675,70 @@ def test_dataset_fails_when_configured_resume_checkpoint_is_missing(tmp_path):
                 "resume_from_ckpt": [str(missing_checkpoint)],
             }
         )
+
+
+def test_dataset_fails_when_relative_resume_checkpoint_is_missing(
+    tmp_path,
+    monkeypatch,
+):
+    project_root = tmp_path / "project"
+    dataset_path = tmp_path / "dataset"
+    dataset_path.mkdir()
+    (dataset_path / "GRES_QA_val.json").write_text(
+        json.dumps([{"id": "sample", "question": "q", "image_path": "sample.jpg"}]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(trajectory_config, "PROJECT_ROOT", project_root)
+    relative_checkpoint = Path("checkpoints/missing_ckpt.jsonl")
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        TrajectoryDataset(
+            {
+                "dataset_path": str(dataset_path),
+                "task_names": "GRES",
+                "split": "val",
+                "resume_from_ckpt": str(relative_checkpoint),
+            }
+        )
+
+    assert str(project_root / relative_checkpoint) in str(exc_info.value)
+
+
+def test_dataset_relative_resume_checkpoint_filters_processed_ids(
+    tmp_path,
+    monkeypatch,
+):
+    project_root = tmp_path / "project"
+    dataset_path = tmp_path / "dataset"
+    dataset_path.mkdir()
+    (dataset_path / "GRES_QA_val.json").write_text(
+        json.dumps(
+            [
+                {"id": "processed", "question": "q", "image_path": "first.jpg"},
+                {"id": "pending", "question": "q", "image_path": "second.jpg"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(trajectory_config, "PROJECT_ROOT", project_root)
+    relative_checkpoint = Path("checkpoints/run_ckpt.jsonl")
+    checkpoint = project_root / relative_checkpoint
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_text(
+        json.dumps({"meta_data": {"id": "processed"}}) + "\n",
+        encoding="utf-8",
+    )
+
+    dataset = TrajectoryDataset(
+        {
+            "dataset_path": str(dataset_path),
+            "task_names": "GRES",
+            "split": "val",
+            "resume_from_ckpt": str(relative_checkpoint),
+        }
+    )
+
+    assert [item["id"] for item in dataset.meta_data] == ["pending"]
 
 
 def test_dataset_existing_resume_checkpoint_filters_processed_ids(tmp_path):
@@ -2559,6 +2634,90 @@ def test_sft_persistence_error_is_not_converted_to_failed_item(tmp_path):
         match="SFT storage unavailable",
     ):
         inferencer.process_single_trajectory(make_item(inferencer))
+
+
+def test_submit_residual_aborts_only_affected_trajectory_with_field_path(tmp_path):
+    class MixedSubmitModel(FakeModel):
+        def __init__(self):
+            super().__init__([])
+
+        def generate_one_item(self, item):
+            if item.meta_data["id"] == "residual-sample" and item.current_round == 0:
+                return structured_response(
+                    structured_tool_message(
+                        "functions.SubmitFinalAnswer",
+                        {"final_answer": "Malformed tool-name attempt."},
+                    )
+                )
+            return structured_response(
+                submit_final_answer_message(
+                    {"final_answer": "Detection complete."}
+                )
+            )
+
+    serializer = TrajectorySerializer(
+        tmp_path / "run",
+        save_trajectory=True,
+    )
+    inferencer = BaseTrajectoryInferencer(
+        tp_model=MixedSubmitModel(),
+        max_rounds=2,
+        batch_size=2,
+        mode="data_generation",
+        serializer=serializer,
+        tool_caller=FakeToolCaller(),
+        benchmark_config={"enabled": False},
+    )
+    dataset = [
+        {
+            "id": sample_id,
+            "question": "Find the person.",
+            "image": Image.new("RGB", (8, 8), "white"),
+        }
+        for sample_id in ("residual-sample", "valid-sample")
+    ]
+
+    results = inferencer.parallel_batch_inference(dataset)
+
+    results_by_id = {item.meta_data["id"]: item for item in results}
+    assert set(results_by_id) == {"residual-sample", "valid-sample"}
+    failed_item = results_by_id["residual-sample"]
+    assert failed_item.status == "failed"
+    assert failed_item.trajectory_invalid is True
+    assert failed_item.invalid_reason == "sft_snapshot_validation_failed"
+    assert failed_item.invalid_stage == "sft_serialization"
+    assert failed_item.invalid_turn_index == 2
+    assert failed_item.turn_records[0]["submit_final_answer_attempt"] is False
+    assert failed_item.turn_records[0]["exclude_from_sft_history"] is False
+    assert (
+        "$.messages[2].tool_calls[0].function.name"
+        in failed_item.invalid_error
+    )
+    assert "functions.SubmitFinalAnswer" in failed_item.invalid_error
+    assert results_by_id["valid-sample"].trajectory_finished is True
+
+    stored_results = [
+        json.loads(line)
+        for line in (tmp_path / "run" / "run_ckpt.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert len(stored_results) == 2
+    stored_by_id = {
+        result["meta_data"]["id"]: result
+        for result in stored_results
+    }
+    assert stored_by_id["residual-sample"]["status"] == "failed"
+    assert stored_by_id["valid-sample"]["trajectory_finished"] is True
+
+    snapshots = [
+        json.loads(line)
+        for line in (tmp_path / "run" / "run_trajectory.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert len(snapshots) == 1
+    assert snapshots[0]["trajectory_id"] == "valid-sample"
 
 
 def test_vllm_cache_config_parsing_and_qwen_kv_capacity(

@@ -1,23 +1,14 @@
-"""Concurrent CPU worker for merging box/mask results.
-
-The merge algorithm and its response schema intentionally match the serial
-implementation in ``merge_box_mask_worker_serial.py``.  The only scheduling
-change is that synchronous CPU work is moved off FastAPI's event loop into a
-bounded thread pool, so independent HTTP requests can run concurrently.
-"""
+"""Concurrent CPU worker for merging box/mask results."""
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from email import message
 
 import numpy as np
 import re
 import cv2
 import uuid
 import argparse
-from PIL import ImageDraw, ImageFont
 from tool_server.utils.utils import *
 from tool_server.utils.server_utils import *
-from tool_server.utils.utils import *
 from pycocotools import mask as mask_utils
 from tool_server.tool_workers.online_workers.base_tool_worker import BaseToolWorker
 
@@ -157,8 +148,8 @@ def has_relevant_patch_boundary_evidence(
     )
 
 class MergeBoxMask(BaseToolWorker):
-    def __init__(self,
-                 controller_addr,
+    def __init__(self, 
+                 controller_addr, 
                  worker_name,
                  worker_addr = "auto",
                  no_register = False,
@@ -197,7 +188,7 @@ class MergeBoxMask(BaseToolWorker):
             host,
             port
             )
-
+        
     def init_model(self):
         logger.info(f"No need to initialize model {self.tool_name}.")
         logger.info(
@@ -234,8 +225,8 @@ class MergeBoxMask(BaseToolWorker):
         try:
             img_0_pil = bytes_to_pil(image_dict["img_0"]["image_bytes"])
             W_orig, H_orig = img_0_pil.size
-
-            # --- 辅助函数：获取变换矩阵和图像的“层级深度” ---
+            
+            # Helper: obtain the transform matrix and image hierarchy depth.
             def get_transform_and_depth(img_name):
                 metadata = image_dict[img_name]
                 provided_transform = metadata.get("transform_to_img0")
@@ -245,10 +236,10 @@ class MergeBoxMask(BaseToolWorker):
                         raise ValueError(f"Invalid transform_to_img0 for image {img_name}")
                     return transform, int(metadata.get("depth", 0))
 
-                T = np.eye(3)
+                T = np.eye(3) 
                 curr_name = img_name
-                depth = 0
-
+                depth = 0 
+                
                 while curr_name != "img_0":
                     if curr_name.endswith("_4x"):
                         T_step = np.array([[0.25, 0, 0],[0, 0.25, 0], [0, 0, 1]])
@@ -260,29 +251,31 @@ class MergeBoxMask(BaseToolWorker):
                             parent_name = m.group(1)
                             offset_x = image_dict[curr_name].get("offset_x", 0)
                             offset_y = image_dict[curr_name].get("offset_y", 0)
-
+                            
                             T_step = np.array([[1, 0, offset_x], [0, 1, offset_y], [0, 0, 1]])
                             curr_name = parent_name
                             depth += 1
                         else:
-                            raise ValueError(f"无法解析图像的继承关系: {curr_name}")
+                            raise ValueError(
+                                f"Unable to resolve the image hierarchy for: {curr_name}"
+                            )
                     T = T_step @ T
-
+                    
                 return T, depth
 
-            # 1. 收集并映射所有的检测结果到 img_0 的全局坐标系
+            # 1. Collect and map all detections into img_0's global coordinates.
             global_detections =[]
-
+            
             for img_name, data in image_dict.items():
                 if "bboxes" in data and "masks" in data:
                     bboxes = np.array(data["bboxes"])
                     masks = np.transpose(mask_utils.decode(data["masks"]), (2, 0, 1))
-
+                    
                     if len(bboxes) == 0:
                         continue
-
+                        
                     T, depth = get_transform_and_depth(img_name)
-                    M = T[:2, :]
+                    M = T[:2, :] 
                     local_height, local_width = masks.shape[1:]
                     footprint = transformed_footprint(local_width, local_height, T)
                     has_split_ancestor = bool(
@@ -291,31 +284,31 @@ class MergeBoxMask(BaseToolWorker):
                             re.search(r"_r\d+_c\d+(?:_|$)", img_name) is not None,
                         )
                     )
-
+                    
                     for i in range(len(bboxes)):
                         xmin, ymin, xmax, ymax = bboxes[i]
                         pt_min = T @ np.array([xmin, ymin, 1.0])
                         pt_max = T @ np.array([xmax, ymax, 1.0])
-
+                        
                         xmin_g = np.clip(pt_min[0], 0, W_orig)
                         xmax_g = np.clip(pt_max[0], 0, W_orig)
                         ymin_g = np.clip(pt_min[1], 0, H_orig)
                         ymax_g = np.clip(pt_max[1], 0, H_orig)
-
+                        
                         if xmin_g >= xmax_g or ymin_g >= ymax_g:
-                            continue
-
+                            continue 
+                        
                         mask = masks[i]
                         mask_bin = (mask > 0.5) if mask.dtype.kind in ('f', 'c') else (mask > 0)
                         mask_float = mask_bin.astype(np.float32)
-
-                        # 恢复全局掩码
+                        
+                        # Restore the global mask.
                         mask_g = cv2.warpAffine(mask_float, M, (W_orig, H_orig), flags=cv2.INTER_LINEAR) > 0.5
                         area = mask_g.sum()
-
+                        
                         if area == 0:
                             continue
-
+                            
                         global_detections.append({
                             "bbox":[xmin_g, ymin_g, xmax_g, ymax_g],
                             "mask": mask_g,
@@ -328,33 +321,33 @@ class MergeBoxMask(BaseToolWorker):
                             "local_width": local_width,
                             "local_height": local_height,
                         })
-
-            # 2. 层级 NMS (Hierarchical NMS)：剔除浅层母图的冗余检测
+                        
+            # 2. Hierarchical NMS: remove redundant detections from shallow parent images.
             global_detections.sort(key=lambda x: (x["depth"], x["area"]), reverse=True)
-
+            
             kept_detections =[]
-
+            
             def compute_mask_iou(det1, det2):
                 b1, b2 = det1["bbox"], det2["bbox"]
                 ixmin, iymin = max(b1[0], b2[0]), max(b1[1], b2[1])
                 ixmax, iymax = min(b1[2], b2[2]), min(b1[3], b2[3])
                 if ixmin >= ixmax or iymin >= iymax:
                     return 0.0
-
+                    
                 ixmin_idx, iymin_idx = int(ixmin), int(iymin)
                 ixmax_idx, iymax_idx = int(np.ceil(ixmax)), int(np.ceil(iymax))
-
+                
                 inter1 = det1["mask"][iymin_idx:iymax_idx, ixmin_idx:ixmax_idx]
                 inter2 = det2["mask"][iymin_idx:iymax_idx, ixmin_idx:ixmax_idx]
-
+                
                 intersection = np.logical_and(inter1, inter2).sum()
                 if intersection == 0:
                     return 0.0
-
+                    
                 union = det1["area"] + det2["area"] - intersection
                 return intersection / union if union > 0 else 0.0
 
-            # 开始 NMS 剔除
+            # Apply NMS filtering.
             for det in global_detections:
                 is_duplicate = False
                 for kept_det in kept_detections:
@@ -366,43 +359,44 @@ class MergeBoxMask(BaseToolWorker):
                         break
                 if not is_duplicate:
                     kept_detections.append(det)
-
-            # 3. 基于掩码有效重叠性合并“被切开的物体碎片” [重点修改区域]
+                    
+            # 3. Merge split object fragments based on effective mask overlap.
             N = len(kept_detections)
             candidate_edges = []
-
+            
             for i in range(N):
                 source_i = kept_detections[i]["source"]
                 box_i = kept_detections[i]["bbox"]
                 mask_i = kept_detections[i]["mask"]
                 area_i = kept_detections[i]["area"]
-
+                
                 for j in range(i + 1, N):
                     source_j = kept_detections[j]["source"]
-
-                    # 【新增规则1】：如果两个碎片来自同一张子图，说明模型已经判定它是俩独立物体，绝不合并！
+                    
+                    # Rule 1: fragments from the same patch were classified as
+                    # separate objects and must never be merged.
                     if source_i == source_j:
                         continue
-
+                        
                     box_j = kept_detections[j]["bbox"]
                     ixmin, iymin = max(box_i[0], box_j[0]), max(box_i[1], box_j[1])
                     ixmax, iymax = min(box_i[2], box_j[2]), min(box_i[3], box_j[3])
-
-                    # 如果外接矩形相交
+                    
+                    # Continue only when the bounding rectangles intersect.
                     if ixmin < ixmax and iymin < iymax:
                         mask_j = kept_detections[j]["mask"]
                         area_j = kept_detections[j]["area"]
-
+                        
                         ixmin_idx, iymin_idx = max(0, int(ixmin)), max(0, int(iymin))
                         ixmax_idx, iymax_idx = min(W_orig, int(np.ceil(ixmax))), min(H_orig, int(np.ceil(iymax)))
-
+                        
                         slice_i = mask_i[iymin_idx:iymax_idx, ixmin_idx:ixmax_idx]
                         slice_j = mask_j[iymin_idx:iymax_idx, ixmin_idx:ixmax_idx]
-
+                        
                         intersection_mask = np.logical_and(slice_i, slice_j)
                         intersection = intersection_mask.sum()
-
-                        # 【新增规则2】：引入重叠比例判断，抛弃原先的 `.any()`
+                        
+                        # Rule 2: use an overlap ratio instead of the previous `.any()` check.
                         if intersection > 0:
                             min_area = min(area_i, area_j)
                             # The overlap must occupy a meaningful part of the
@@ -464,11 +458,11 @@ class MergeBoxMask(BaseToolWorker):
             for i in range(N):
                 components_by_root.setdefault(find(i), []).append(i)
             components = sorted(components_by_root.values(), key=lambda comp: comp[0])
-
-            # 4. 生成合并后的最终结果
+                    
+            # 4. Build the final merged results.
             final_bboxes = []
             final_masks =[]
-
+            
             for comp in components:
                 bboxes_comp = [kept_detections[idx]["bbox"] for idx in comp]
                 xmin = min([b[0] for b in bboxes_comp])
@@ -476,18 +470,18 @@ class MergeBoxMask(BaseToolWorker):
                 xmax = max([b[2] for b in bboxes_comp])
                 ymax = max([b[3] for b in bboxes_comp])
                 final_bboxes.append([xmin, ymin, xmax, ymax])
-
+                
                 masks_comp = [kept_detections[idx]["mask"] for idx in comp]
                 merged_mask = np.logical_or.reduce(masks_comp)
                 final_masks.append(merged_mask)
-
+                
             final_bboxes = np.array(final_bboxes) if final_bboxes else np.empty((0, 4))
             final_masks = np.array(final_masks) if final_masks else np.empty((0, H_orig, W_orig), dtype=bool)
-
-            # 5. 在 img_0 上做可视化绘制
+            
+            # 5. Draw the visualization on img_0.
             vis_img_copy = img_0_pil.copy().convert("RGB")
             vis_arr = np.array(vis_img_copy)
-
+            
             if len(final_bboxes) > 0:
                 # A request-local legacy RNG preserves the exact colors produced
                 # by np.random.seed(42) + np.random.randint while avoiding races
@@ -495,25 +489,25 @@ class MergeBoxMask(BaseToolWorker):
                 random_state = np.random.RandomState(42)
                 colors = random_state.randint(0, 255, (len(final_bboxes), 3), dtype=np.uint8)
                 thickness = max(1, int(max(H_orig, W_orig) * 0.002))
-
+                
                 for i in range(len(final_bboxes)):
                     bbox = final_bboxes[i]
                     mask = final_masks[i]
                     color = colors[i]
-
+                    
                     roi = vis_arr[mask]
                     vis_arr[mask] = (roi * 0.5 + color * 0.5).astype(np.uint8)
-
+                    
                     cv2.rectangle(
-                        vis_arr,
-                        (int(bbox[0]), int(bbox[1])),
-                        (int(bbox[2]), int(bbox[3])),
-                        color.tolist(),
+                        vis_arr, 
+                        (int(bbox[0]), int(bbox[1])), 
+                        (int(bbox[2]), int(bbox[3])), 
+                        color.tolist(), 
                         thickness
                     )
-
+                    
             vis_img_final = Image.fromarray(vis_arr)
-
+            
             final_masks_hwn = np.transpose(final_masks, (1, 2, 0))
             final_masks_f = np.asfortranarray(final_masks_hwn.astype(np.uint8))
             rle_final_masks = mask_utils.encode(final_masks_f)

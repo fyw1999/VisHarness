@@ -1,10 +1,4 @@
-"""Concurrent CPU worker for splitting images into overlapping patches.
-
-The image-processing algorithm and response schema intentionally match the
-serial implementation in ``split_image_into_patches_serial.py``.  Independent
-requests execute in a bounded thread pool instead of blocking FastAPI's event
-loop.
-"""
+"""Concurrent CPU worker for splitting images into overlapping patches."""
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import uuid
@@ -12,7 +6,6 @@ import argparse
 from PIL import Image, ImageDraw, ImageFont
 from tool_server.utils.utils import *
 from tool_server.utils.server_utils import *
-from tool_server.utils.utils import *
 from tool_server.tool_workers.online_workers.base_tool_worker import BaseToolWorker
 
 GB = 1 << 30
@@ -44,8 +37,8 @@ def downsample_direct_super_resolution_visual(image, image_name):
     )
 
 class SplitImageIntoPatches(BaseToolWorker):
-    def __init__(self,
-                 controller_addr,
+    def __init__(self, 
+                 controller_addr, 
                  worker_name = "",
                  worker_addr = "auto",
                  no_register = False,
@@ -78,7 +71,7 @@ class SplitImageIntoPatches(BaseToolWorker):
             host,
             port
             )
-
+        
     def init_model(self):
         logger.info(f"No need to initialize model {self.tool_name}.")
         logger.info(
@@ -96,7 +89,7 @@ class SplitImageIntoPatches(BaseToolWorker):
             self.generate_gate,
             params,
         )
-
+    
     def get_segments(self, total_length, step_size, min_usage_ratio=0.3):
         segments = []
         start = 0
@@ -123,7 +116,7 @@ class SplitImageIntoPatches(BaseToolWorker):
         ret = {"message": "", "status": ""}
         results = {}
         try:
-            overlap_ratio = 0.2
+            overlap_ratio = 0.2 
             for image_name, image_data in image_dict.items():
                 image_pil = bytes_to_pil(image_data["image_bytes"])
                 patch_size = image_data["patch_size"]
@@ -142,7 +135,7 @@ class SplitImageIntoPatches(BaseToolWorker):
                     font = ImageFont.truetype("arial.ttf", font_size)
                 except IOError:
                     font = ImageFont.load_default(size=font_size)
-
+            
                 for r_idx, (y_start, y_end) in enumerate(y_segments):
                     for c_idx, (x_start, x_end) in enumerate(x_segments):
                         seg_h = y_end - y_start
@@ -150,7 +143,7 @@ class SplitImageIntoPatches(BaseToolWorker):
 
                         pad_h = int(seg_h * overlap_ratio)
                         pad_w = int(seg_w * overlap_ratio)
-
+                        
                         crop_y1 = max(0, y_start - pad_h)
                         crop_y2 = min(img_h, y_end + pad_h)
                         crop_x1 = max(0, x_start - pad_w)
@@ -166,14 +159,14 @@ class SplitImageIntoPatches(BaseToolWorker):
                             "height": crop_y2 - crop_y1
                         }
 
-                        line_width = max(2, int(img_w / 200))
+                        line_width = max(2, int(img_w / 200)) 
                         draw.rectangle([x_start, y_start, x_end, y_end], outline="red", width=line_width)
 
                         label_text = patch_name
                         text_bbox = draw.textbbox((x_start, y_start), label_text, font=font)
                         draw.rectangle(text_bbox, fill="yellow")
                         draw.text((x_start, y_start), label_text, fill="black", font=font)
-
+                
                 # The overview is model-facing context only. Restore it to the
                 # parent display size when the split input is itself a direct
                 # SuperResolution result (name ends in ``_4x``). The cropped
@@ -184,7 +177,7 @@ class SplitImageIntoPatches(BaseToolWorker):
                     image_name,
                 )
                 results[image_name]["overview"] = pil_to_bytes(overview)
-
+                
             ret["results"] = results
             ret["status"] = "success"
             ret["message"] = f"Tool SplitImageIntoPatches executed successfully."

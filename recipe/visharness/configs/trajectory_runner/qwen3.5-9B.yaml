@@ -1,0 +1,31 @@
+mode: online
+model_args: 
+  model_name: Qwen3.5-9B
+  base_url: http://localhost:8000/v1
+  api_key: EMPTY
+
+batch_size: 10
+max_rounds: 10
+
+generation_args:
+  max_tokens: 20000
+  temperature: 0.6
+  top_p: 0.95
+  presence_penalty: 0.0
+  timeout: 300
+  extra_body:
+    top_k: 20
+    min_p: 0.0
+    repetition_penalty: 1.0
+    
+dataset_args:
+  task_names:
+    Dense200
+  split: test
+  dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/Dense200/
+  resume_from_ckpt: 
+  save_path: results/qwen3.5-9B_Dense200
+  save_trajectory: False
+  num_sample: null
+  
+verbosity: INFO

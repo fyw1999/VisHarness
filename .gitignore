@@ -1,42 +1,114 @@
-__pycache__/
-*.py[cod]
-*.so
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.coverage
-htmlcov/
+# This repository is a source-code-only backup.
+# Ignore everything by default, then explicitly allow selected source trees.
+*
 
-.venv/
-venv/
-.env
-.env.*
+# Repository metadata and root-level Python entry points.
+!/.gitignore
+!/README.md
+!/*.py
 
-build/
-dist/
-*.egg-info/
+# Reproducible Conda environment exports.
+!/environment/
+!/environment/*.yaml
+!/environment/*.yml
 
-outputs/
-results/
-checkpoints/
-training_data/
-data_generation/
-swanlog/
-logs/
-*.log
-*.jsonl
-*.parquet
-*.pkl
-*.pickle
-*.pt
-*.pth
-*.ckpt
-*.bin
-*.safetensors
+# VisHarness implementation.
+!/visharness/
+!/visharness/**/
+!/visharness/**/*.py
+!/visharness/**/*.sh
+!/visharness/**/*.bash
+!/visharness/**/*.yaml
+!/visharness/**/*.yml
+!/visharness/**/*.md
 
-tool_server/tool_workers/online_workers/controller_addr/
-tool_server/tool_workers/logs/
+# VisHarness recipes, configs, and launch scripts.
+!/recipe/
+!/recipe/visharness/
+!/recipe/visharness/**/
+!/recipe/visharness/**/*.py
+!/recipe/visharness/**/*.sh
+!/recipe/visharness/**/*.bash
+!/recipe/visharness/**/*.yaml
+!/recipe/visharness/**/*.yml
+!/recipe/visharness/**/*.json
+!/recipe/visharness/**/*.md
 
-.idea/
-.vscode/
-.DS_Store
+# Tool server source.
+!/tool_server/
+!/tool_server/**/
+!/tool_server/**/*.py
+!/tool_server/**/*.sh
+!/tool_server/**/*.bash
+!/tool_server/**/*.yaml
+!/tool_server/**/*.yml
+!/tool_server/**/*.md
+
+# Evaluation and utility scripts.
+!/evaluate/
+!/evaluate/**/
+!/evaluate/**/*.py
+!/evaluate/**/*.sh
+!/evaluate/**/*.bash
+!/evaluate/**/*.yaml
+!/evaluate/**/*.yml
+!/evaluate/**/*.md
+
+!/scripts/
+!/scripts/**/
+!/scripts/**/*.py
+!/scripts/**/*.sh
+!/scripts/**/*.bash
+!/scripts/**/*.yaml
+!/scripts/**/*.yml
+!/scripts/**/*.md
+
+!/key_scripts/
+!/key_scripts/**/
+!/key_scripts/**/*.py
+!/key_scripts/**/*.sh
+!/key_scripts/**/*.bash
+!/key_scripts/**/*.yaml
+!/key_scripts/**/*.yml
+!/key_scripts/**/*.md
+
+!/swift_bash/
+!/swift_bash/**/
+!/swift_bash/**/*.py
+!/swift_bash/**/*.sh
+!/swift_bash/**/*.bash
+!/swift_bash/**/*.yaml
+!/swift_bash/**/*.yml
+!/swift_bash/**/*.md
+
+# Never include generated artifacts, caches, logs, datasets, model weights,
+# secrets, virtual environments, or the nested verl repository.
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/*.py[cod]
+**/*.log
+**/*.jsonl
+**/*.parquet
+**/*.pkl
+**/*.pickle
+**/*.pt
+**/*.pth
+**/*.ckpt
+**/*.bin
+**/*.safetensors
+**/.env
+**/.env.*
+**/*secret*
+**/*credential*
+**/*token*
+**/*.pem
+**/*.key
+/checkpoints/
+/config/
+/data_generation/
+/output/
+/outputs/
+/results/
+/swanlog/
+/training_data/

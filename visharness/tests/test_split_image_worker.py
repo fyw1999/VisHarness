@@ -21,10 +21,6 @@ def _decoded_size(payload: bytes) -> tuple[int, int]:
 
 
 @pytest.mark.parametrize(
-    "worker_module",
-    [split_image_into_patches],
-)
-@pytest.mark.parametrize(
     ("image_name", "expected_factor"),
     [
         ("img_0", 1),
@@ -36,17 +32,12 @@ def _decoded_size(payload: bytes) -> tuple[int, int]:
     ],
 )
 def test_direct_super_resolution_factor_uses_trailing_operations_only(
-    worker_module,
     image_name,
     expected_factor,
 ):
-    assert worker_module.get_direct_super_resolution_factor(image_name) == expected_factor
+    assert split_image_into_patches.get_direct_super_resolution_factor(image_name) == expected_factor
 
 
-@pytest.mark.parametrize(
-    "worker_class",
-    [ConcurrentSplitImageIntoPatches],
-)
 @pytest.mark.parametrize(
     ("image_name", "expected_overview_size"),
     [
@@ -57,11 +48,10 @@ def test_direct_super_resolution_factor_uses_trailing_operations_only(
     ],
 )
 def test_split_restores_only_direct_super_resolution_overview(
-    worker_class,
     image_name,
     expected_overview_size,
 ):
-    worker = object.__new__(worker_class)
+    worker = object.__new__(ConcurrentSplitImageIntoPatches)
     response = worker.generate(
         {
             "image_dict": {

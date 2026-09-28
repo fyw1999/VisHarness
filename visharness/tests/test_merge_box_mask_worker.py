@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 from PIL import Image
 from pycocotools import mask as mask_utils
 
@@ -7,16 +6,13 @@ from tool_server.tool_workers.online_workers.merge_box_mask_worker import MergeB
 from tool_server.utils.utils import pil_to_bytes
 
 
-WORKER_CLASSES = [MergeBoxMask]
-
-
 def _encode_masks(*masks: np.ndarray):
     masks_hwn = np.stack(masks, axis=2).astype(np.uint8)
     return mask_utils.encode(np.asfortranarray(masks_hwn))
 
 
-def _worker(worker_class):
-    worker = worker_class.__new__(worker_class)
+def _worker():
+    worker = MergeBoxMask.__new__(MergeBoxMask)
     worker.iou_threshold = 0.8
     worker.fragment_overlap_ratio = 0.2
     worker.fragment_edge_margin_ratio = 0.03
@@ -44,7 +40,7 @@ def _source_entry(
     }
 
 
-def _run(worker_class, original_size, sources):
+def _run(original_size, sources):
     image_dict = {
         "img_0": {
             "image_bytes": pil_to_bytes(Image.new("RGB", original_size, "black")),
@@ -54,13 +50,12 @@ def _run(worker_class, original_size, sources):
         },
         **sources,
     }
-    response = _worker(worker_class).generate({"image_dict": image_dict})
+    response = _worker().generate({"image_dict": image_dict})
     assert response["status"] == "success"
     return response["results"]
 
 
-@pytest.mark.parametrize("worker_class", WORKER_CLASSES)
-def test_fragment_components_keep_same_source_instances_separate(worker_class):
+def test_fragment_components_keep_same_source_instances_separate():
     patch_a_first = np.zeros((20, 25), dtype=np.uint8)
     patch_a_first[2:8, 20:25] = 1
     patch_a_second = np.zeros((20, 25), dtype=np.uint8)
@@ -69,7 +64,6 @@ def test_fragment_components_keep_same_source_instances_separate(worker_class):
     patch_b_oversized[2:18, 5:15] = 1
 
     result = _run(
-        worker_class,
         (40, 20),
         {
             "img_0_r1_c1": _source_entry(
@@ -90,15 +84,13 @@ def test_fragment_components_keep_same_source_instances_separate(worker_class):
     assert result["count"] == 2
 
 
-@pytest.mark.parametrize("worker_class", WORKER_CLASSES)
-def test_relevant_patch_edges_allow_two_fragments_to_merge(worker_class):
+def test_relevant_patch_edges_allow_two_fragments_to_merge():
     left = np.zeros((20, 25), dtype=np.uint8)
     left[3:13, 20:25] = 1
     right = np.zeros((20, 25), dtype=np.uint8)
     right[3:13, 0:10] = 1
 
     result = _run(
-        worker_class,
         (40, 20),
         {
             "img_0_r1_c1": _source_entry([left], [[20, 3, 25, 13]], offset_x=0, offset_y=0),
@@ -109,15 +101,13 @@ def test_relevant_patch_edges_allow_two_fragments_to_merge(worker_class):
     assert result["count"] == 1
 
 
-@pytest.mark.parametrize("worker_class", WORKER_CLASSES)
-def test_one_sided_patch_edge_evidence_is_sufficient(worker_class):
+def test_one_sided_patch_edge_evidence_is_sufficient():
     clipped = np.zeros((20, 25), dtype=np.uint8)
     clipped[3:13, 20:25] = 1
     complete = np.zeros((20, 25), dtype=np.uint8)
     complete[3:13, 5:15] = 1
 
     result = _run(
-        worker_class,
         (40, 20),
         {
             "img_0_r1_c1": _source_entry(
@@ -134,15 +124,13 @@ def test_one_sided_patch_edge_evidence_is_sufficient(worker_class):
     assert result["count"] == 1
 
 
-@pytest.mark.parametrize("worker_class", WORKER_CLASSES)
-def test_interior_overlap_without_patch_boundary_evidence_does_not_merge(worker_class):
+def test_interior_overlap_without_patch_boundary_evidence_does_not_merge():
     first = np.zeros((20, 25), dtype=np.uint8)
     first[5:15, 8:16] = 1
     second = np.zeros((20, 25), dtype=np.uint8)
     second[5:15, 5:13] = 1
 
     result = _run(
-        worker_class,
         (40, 20),
         {
             "img_0_r1_c1": _source_entry([first], [[8, 5, 16, 15]], offset_x=0, offset_y=0),
@@ -155,8 +143,7 @@ def test_interior_overlap_without_patch_boundary_evidence_does_not_merge(worker_
     assert result["count"] == 2
 
 
-@pytest.mark.parametrize("worker_class", WORKER_CLASSES)
-def test_four_patch_fragments_form_one_component(worker_class):
+def test_four_patch_fragments_form_one_component():
     top_left = np.zeros((25, 25), dtype=np.uint8)
     top_left[20:25, 20:25] = 1
     top_right = np.zeros((25, 25), dtype=np.uint8)
@@ -167,7 +154,6 @@ def test_four_patch_fragments_form_one_component(worker_class):
     bottom_right[0:10, 0:10] = 1
 
     result = _run(
-        worker_class,
         (40, 40),
         {
             "img_0_r1_c1": _source_entry(
@@ -188,15 +174,13 @@ def test_four_patch_fragments_form_one_component(worker_class):
     assert result["count"] == 1
 
 
-@pytest.mark.parametrize("worker_class", WORKER_CLASSES)
-def test_full_image_and_super_resolution_are_not_treated_as_patch_fragments(worker_class):
+def test_full_image_and_super_resolution_are_not_treated_as_patch_fragments():
     first = np.zeros((20, 20), dtype=np.uint8)
     first[2:10, 2:10] = 1
     second = np.zeros((20, 20), dtype=np.uint8)
     second[2:14, 2:10] = 1
 
     result = _run(
-        worker_class,
         (20, 20),
         {
             "img_0_full": _source_entry(

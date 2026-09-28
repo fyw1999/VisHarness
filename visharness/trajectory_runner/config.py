@@ -8,6 +8,15 @@ from typing import Any
 
 import yaml
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def resolve_project_path(path: str | Path) -> Path:
+    configured_path = Path(path)
+    if configured_path.is_absolute():
+        return configured_path
+    return PROJECT_ROOT / configured_path
+
 
 class ConfigNode(dict):
     """Small dict wrapper that preserves the legacy ``config.foo`` style."""

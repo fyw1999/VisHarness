@@ -1,16 +1,8 @@
-from PIL import Image
-from io import BytesIO
-import base64
-import logging, sys, os
+import logging
+import sys
 
-server_error_msg = "**NETWORK ERROR DUE TO HIGH TRAFFIC. PLEASE REGENERATE OR REFRESH THIS PAGE.**"
-
-CONTROLLER_HEART_BEAT_EXPIRATION = 30
 WORKER_HEART_BEAT_INTERVAL = 15
 
-LOGDIR = "."
-
-handler = None
 
 class StreamToLogger(object):
     """
@@ -45,20 +37,7 @@ class StreamToLogger(object):
         self.linebuf = ''
 
 
-def load_image_from_base64(image):
-    return Image.open(BytesIO(base64.b64decode(image)))
-
-
-
-
-current_file_path = os.path.abspath(__file__)
-current_folder_path = os.path.dirname(current_file_path)
-
-def build_logger(logger_name, logger_filename=None, logger_dir=f"{current_folder_path}/../tool_workers/logs/automatic_generated"):
-    global handler
-    if logger_filename is None:
-        logger_filename = f"{logger_name}.log"
-    LOGDIR = logger_dir
+def build_logger(logger_name, logger_filename=None, logger_dir=None):
     formatter = logging.Formatter(
         fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
@@ -84,21 +63,4 @@ def build_logger(logger_name, logger_filename=None, logger_dir=f"{current_folder
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
 
-    # Add a file handler for all loggers
-    if handler is None:
-        os.makedirs(LOGDIR, exist_ok=True)
-        filename = os.path.join(LOGDIR, logger_filename)
-        handler = logging.FileHandler(filename, mode='w')
-        handler.setLevel(logging.INFO)
-        handler.setFormatter(formatter)
-
-        for name, item in logging.root.manager.loggerDict.items():
-            if isinstance(item, logging.Logger):
-                item.addHandler(handler)
-
     return logger
-
-def pretty_print_semaphore(semaphore):
-    if semaphore is None:
-        return "None"
-    return f"Semaphore(value={semaphore._value}, locked={semaphore.locked()})"

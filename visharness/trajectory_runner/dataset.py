@@ -12,7 +12,7 @@ from typing import Any
 from PIL import Image, ImageOps
 from torch.utils.data import Dataset
 
-from .config import as_plain_dict
+from .config import as_plain_dict, resolve_project_path
 
 
 def _read_jsonl(path: str | Path) -> list[dict[str, Any]]:
@@ -182,7 +182,7 @@ class TrajectoryDataset(Dataset):
             ckpt_paths = [ckpt_paths]
         processed_ids = set()
         for ckpt_path_value in ckpt_paths:
-            ckpt_path = Path(ckpt_path_value)
+            ckpt_path = resolve_project_path(ckpt_path_value)
             if not ckpt_path.is_file():
                 raise FileNotFoundError(
                     f"Configured resume checkpoint does not exist: {ckpt_path}"

@@ -2,25 +2,23 @@
 A controller manages distributed workers.
 It sends worker addresses to clients.
 """
-import sys
+import os
 import uvicorn
 import requests
 import numpy as np
-from fastapi.responses import StreamingResponse
 from fastapi import FastAPI, Request
 import threading
-from typing import List, Union
+from typing import List
 import time
-import logging
-import json
 from enum import Enum, auto
 import dataclasses
-import asyncio
 import argparse
-import os
 
-from tool_server.tool_workers.online_workers.utils import build_logger, SERVER_ERROR_MSG
-from tool_server.tool_workers.online_workers.constants import CONTROLLER_HEART_BEAT_EXPIRATION
+from tool_server.utils.server_utils import build_logger
+
+CONTROLLER_HEART_BEAT_EXPIRATION = int(
+    os.getenv("FASTCHAT_CONTROLLER_HEART_BEAT_EXPIRATION", 90)
+)
 
 logger = build_logger("controller", "controller.log")
 
@@ -46,18 +44,18 @@ class WorkerInfo:
     queue_length: int
     worker_addr: str
     check_heart_beat: bool
-    last_heart_beat: float  # 修复：time.time() 返回的是 float
+    last_heart_beat: float  # time.time() returns a float.
 
 
 class Controller:
     def __init__(self, dispatch_method: str):
         # Dict[str -> WorkerInfo]
         self.worker_info = {}
-        self.lock = threading.Lock()  # 🌟 新增：保护字典的互斥锁
+        self.lock = threading.Lock()  # Mutex protecting the worker dictionary.
         self.dispatch_method = DispatchMethod.from_str(dispatch_method)
 
         self.heart_beat_thread = threading.Thread(target=self.heart_beat_controller)
-        self.heart_beat_thread.daemon = True # 设置为守护线程，主程序退出时自动关闭
+        self.heart_beat_thread.daemon = True  # Exit with the main process.
         self.heart_beat_thread.start()
 
         logger.info("Init controller")
@@ -69,20 +67,20 @@ class Controller:
 
     def register_worker(self, worker_name: str, check_heart_beat: bool,
                         worker_status: dict):
-        with self.lock:  # 🌟 加锁
+        with self.lock:  # Protect shared worker state.
             if worker_name not in self.worker_info:
                 logger.info(f"Register a new worker: {worker_name}")
             else:
                 logger.info(f"Register an existing worker: {worker_name}")
 
             if not worker_status:
-                # 🌟 修复：防止新 Worker 注册时抛出 KeyError
+                # Avoid a KeyError when a new worker registers.
                 if worker_name in self.worker_info:
                     worker_status = self.get_worker_status(self.worker_info[worker_name].worker_addr)
                 else:
                     logger.error(f"Cannot register new worker {worker_name} without status.")
                     return False
-
+                    
             if not worker_status:
                 return False
 
@@ -107,12 +105,12 @@ class Controller:
         return r.json()
 
     def remove_worker(self, worker_name: str):
-        with self.lock:  # 🌟 加锁
+        with self.lock:  # Protect shared worker state.
             if worker_name in self.worker_info:
                 del self.worker_info[worker_name]
 
     def refresh_all_workers(self):
-        with self.lock:  # 🌟 加锁
+        with self.lock:  # Protect shared worker state.
             old_info = dict(self.worker_info)
             self.worker_info = {}
 
@@ -122,24 +120,25 @@ class Controller:
 
     def list_models(self):
         model_names = set()
-        with self.lock:  # 🌟 加锁
+        with self.lock:  # Protect shared worker state.
             for w_name, w_info in self.worker_info.items():
                 model_names.update(w_info.model_names)
         return list(model_names)
 
     def list_workers(self):
         worker_names = []
-        with self.lock:  # 🌟 加锁
+        with self.lock:  # Protect shared worker state.
             for w_name, w_info in self.worker_info.items():
                 worker_names.append(w_name)
         return worker_names
 
     def get_worker_address(self, model_name: str):
-        with self.lock:  # 🌟 加锁，防止遍历时字典被后台线程修改
+        with self.lock:  # Prevent mutation during iteration.
             if self.dispatch_method == DispatchMethod.LOTTERY:
-                # 注：由于你目前的客户端依赖返回 {"worker_name", "worker_addr"}
-                # 此 LOTTERY 分支的返回逻辑与客户端不兼容（返回了字符串，且可能进入死循环测试状态）
-                # 建议在未来彻底删除此分支，只保留 SHORTEST_QUEUE
+                # Clients currently expect {"worker_name", "worker_addr"}.
+                # The LOTTERY branch is incompatible because it returns a string
+                # and may enter an endless test loop. Consider removing it and
+                # retaining only SHORTEST_QUEUE.
                 worker_names = []
                 worker_speeds = []
                 for w_name, w_info in self.worker_info.items():
@@ -155,9 +154,9 @@ class Controller:
                     pt = np.random.choice(np.arange(len(worker_names)),
                                           p=worker_speeds)
                     worker_name = worker_names[pt]
-                    # 强行适配客户端，但如果 LOTTERY 不用建议删除整块
+                    # Adapt the result for clients; remove this block if LOTTERY is unused.
                     return {"worker_name": worker_name, "worker_addr": self.worker_info[worker_name].worker_addr}
-
+                    
             elif self.dispatch_method == DispatchMethod.SHORTEST_QUEUE:
                 worker_addrs = []
                 worker_qlen = []
@@ -167,10 +166,10 @@ class Controller:
                         worker_names.append(w_name)
                         worker_addrs.append(w_info.worker_addr)
                         worker_qlen.append(w_info.queue_length / w_info.speed)
-
+                
                 if len(worker_addrs) == 0:
                     return {"worker_name": "", "worker_addr": ""}
-
+                    
                 min_index = np.argmin(worker_qlen)
                 worker_addr = worker_addrs[min_index]
                 worker_name = worker_names[min_index]
@@ -201,7 +200,8 @@ class Controller:
                 if w_info.check_heart_beat and w_info.last_heart_beat < expire:
                     to_delete.append(worker_name)
 
-        # remove_worker 内部有锁，所以这里不要包在上面的 with self.lock 里，防止死锁
+        # remove_worker acquires the lock internally, so call it outside the
+        # surrounding lock to avoid a deadlock.
         for worker_name in to_delete:
             self.remove_worker(worker_name)
 
@@ -215,13 +215,13 @@ async def register_worker(request: Request):
     controller.register_worker(
         data["worker_name"], data["check_heart_beat"],
         data.get("worker_status", None))
-    return {"status": "ok"} # 增加返回状态
+    return {"status": "ok"}  # Return the registration status.
 
 
 @app.post("/refresh_all_workers")
 async def refresh_all_workers():
     controller.refresh_all_workers()
-    return {"status": "ok"} # 修复：原代码接收了并不存在的返回值
+    return {"status": "ok"}  # Do not consume a nonexistent return value.
 
 
 @app.post("/list_models")

@@ -557,11 +557,19 @@ def test_merge_preserves_disjoint_ids_and_images_and_swift_masks_target(tmp_path
     )
     assert swift_report["converted_snapshots"] == 2
     swift_records = [json.loads(line) for line in swift_path.read_text().splitlines()]
-    for item in swift_records:
+    for item, expected_image in zip(
+        swift_records,
+        (
+            "images/REC8K-kimi-target_step_1/image.jpg",
+            "images/REC8K-qwen-target_step_1/image.jpg",
+        ),
+        strict=True,
+    ):
         assert sum(message["loss"] for message in item["messages"]) == 1
         assert item["messages"][-1]["role"] == "assistant"
         assert item["messages"][-1]["loss"] is True
-        assert Path(item["images"][0]).is_absolute()
+        assert item["images"] == [expected_image]
+        assert not Path(item["images"][0]).is_absolute()
 
 
 def test_swift_filters_aggregate_qwen3vl_raw_image_patch_budget(tmp_path):

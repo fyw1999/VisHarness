@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
-from .config import as_plain_dict
+from .config import as_plain_dict, resolve_project_path
 from .dataset import TrajectoryDataset
 from .inferencer import BaseTrajectoryInferencer
 from .model_client import OnlineVllmModelClient
 from .serializer import TrajectorySerializer
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_save_path(save_path: str | Path) -> Path:
+    return resolve_project_path(save_path)
 
 
 class TrajectoryEvaluator:
@@ -45,11 +50,16 @@ class TrajectoryEvaluator:
             )
 
         dataset_args = config.get("dataset_args", {})
-        save_path = dataset_args.get("save_path") if isinstance(dataset_args, dict) else getattr(dataset_args, "save_path", None)
-        if not save_path:
+        configured_save_path = (
+            dataset_args.get("save_path")
+            if isinstance(dataset_args, dict)
+            else getattr(dataset_args, "save_path", None)
+        )
+        if not configured_save_path:
             raise ValueError(
                 "dataset_args.save_path is required so trajectory-runner results can be checkpointed."
             )
+        save_path = _resolve_save_path(configured_save_path)
         save_trajectory = (
             dataset_args.get("save_trajectory", False)
             if isinstance(dataset_args, dict)

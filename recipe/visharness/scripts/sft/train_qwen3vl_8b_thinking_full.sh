@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${MODEL_PATH:?Set MODEL_PATH to the Qwen3-VL-8B-Thinking model directory}"
-: "${DATASET_PATH:?Set DATASET_PATH to merged_sft_data_swift_cmd.jsonl}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../../../.." && pwd)"
 
-OUTPUT_DIR="${OUTPUT_DIR:-outputs/sft/Qwen3-VL-8B-Thinking}"
-NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
-CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
-IMAGE_MAX_TOKEN_NUM="${IMAGE_MAX_TOKEN_NUM:-2048}"
-CELOSS_PARALLEL_SIZE="${CELOSS_PARALLEL_SIZE:-2048}"
+MODEL_PATH="${MODEL_PATH:-/vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/LLM/Qwen3-VL-8B-Thinking/}"
+DATASET_DIR="${DATASET_DIR:-$PROJECT_ROOT/training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k}"
 
-export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
-export NPROC_PER_NODE CUDA_VISIBLE_DEVICES IMAGE_MAX_TOKEN_NUM CELOSS_PARALLEL_SIZE
-
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=8 \
+IMAGE_MAX_TOKEN_NUM=2048 \
+CELOSS_PARALLEL_SIZE=2048 \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+ROOT_IMAGE_DIR="$DATASET_DIR" \
 swift sft \
     --model "$MODEL_PATH" \
     --tuner_type full \
-    --dataset "$DATASET_PATH" \
+    --dataset "$DATASET_DIR/merged_sft_data_swift_cmd.jsonl" \
     --load_from_cache_file true \
     --add_non_thinking_prefix true \
     --torch_dtype bfloat16 \
@@ -24,7 +24,7 @@ swift sft \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-5 \
     --gradient_accumulation_steps 32 \
-    --output_dir "$OUTPUT_DIR" \
+    --output_dir checkpoints/sft/Qwen3-VL-8B-Thinking \
     --save_steps 50 \
     --save_total_limit 2 \
     --logging_steps 5 \
@@ -39,4 +39,4 @@ swift sft \
     --padding_free true \
     --use_logits_to_keep false \
     --use_liger_kernel true \
-    --report_to "${REPORT_TO:-none}"
+    --report_to swanlab

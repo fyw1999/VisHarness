@@ -1,0 +1,181 @@
+hydra:
+  searchpath:
+    - file://verl/verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+data:
+  train_files: ${oc.env:VISHARNESS_TRAIN_DATA}
+  val_files: ${oc.env:VISHARNESS_VAL_DATA}
+  # Validation is not tensorized into actor-update samples, so it may use the
+  # full model context instead of the per-turn training prompt width.
+  val_max_prompt_length: ${oc.env:VISHARNESS_VALIDATION_MAX_PROMPT_LENGTH,null}
+  prompt_key: prompt
+  image_key: images
+  return_raw_chat: true
+  return_multi_modal_inputs: false
+  tool_config_path: recipe/visharness/configs/tools.yaml
+  custom_cls:
+    path: visharness/data/visharness_dataset.py
+    name: VisHarnessDataset
+
+actor_rollout_ref:
+  model:
+    path: ${oc.env:VISHARNESS_MODEL_PATH}
+  rollout:
+    mode: async
+    n: 8
+    agent:
+      default_agent_loop: visharness_agent
+      agent_loop_config_path: recipe/visharness/configs/agent_loop.yaml
+      agent_loop_manager_class: visharness.agent_loop.dynamic_validation_manager.VisHarnessAgentLoopManager
+    multi_turn:
+      enable: true
+      max_assistant_turns: 10
+      max_user_turns: 10
+      max_parallel_calls: 1
+      tool_config_path: recipe/visharness/configs/tools.yaml
+
+algorithm:
+  adv_estimator: grpo
+  use_kl_in_reward: false
+  filter_groups:
+    _target_: verl.trainer.config.FilterGroupsConfig
+    # Ordinary GRPO automatically uses continuous prompt-group refill when
+    # this is enabled; there is no separate synchronous-top-up switch.
+    enable: true
+    metric: trajectory_reward
+    max_num_gen_batches: 0
+
+visharness:
+  debug_taskrunner: false
+  debug_agent_loop: false
+  debug_reward: false
+  rollout_progress: true
+  tool_call:
+    # One tool invocation is aborted after this many final CUDA OOM responses.
+    max_consecutive_oom: ${oc.env:VISHARNESS_TOOL_MAX_CONSECUTIVE_OOM,5}
+  per_turn:
+    max_prompt_length: ${oc.env:VISHARNESS_PER_TURN_MAX_PROMPT_LENGTH,24576}
+    max_response_length: ${oc.env:VISHARNESS_PER_TURN_MAX_RESPONSE_LENGTH,1024}
+    # Each trainable assistant turn has equal policy-gradient mass. Keeping the
+    # actor loss at seq-mean-token-mean also prevents verbose turns from gaining
+    # extra weight merely because they contain more response tokens.
+    trajectory_equal_weight: false
+    # Fix this many optimizer mini-batches per rollout update. null derives
+    # train_batch_size // ppo_mini_batch_size.
+    num_mini_batches: null
+  task_sampling:
+    # Ordinary GRPO only. Every source owns an independent shuffled pool.
+    # Post-filter deficits are always refilled from the missing source; source
+    # exhaustion reshuffles that source instead of redistributing its quota.
+    enable: true
+    # alpha=1 keeps the original dataset ratio; alpha=0 samples sources
+    # uniformly. alpha=0.5 is the square-root compromise used here.
+    alpha: 0.5
+    # Fail loudly only when this many complete passes through one source add no
+    # post-filter prompt to the current actor update. Ordinary top-up itself is
+    # unlimited and always continues until the exact source quota is satisfied.
+    max_no_progress_cycles: 3
+  trajectory_reward:
+    # When enabled, the complete-trajectory reward used for filtering and
+    # GRPO normalization is:
+    # task_reward - step_cost * num_assistant_turns.
+    # Keep disabled when additional visual interactions should not be
+    # discouraged.
+    enable_step_cost: false
+    step_cost: 0.2
+  per_turn_advantage:
+    # These costs are applied only after trajectory-level GRPO normalization.
+    # Hard-error costs must be strictly positive; categories are mutually exclusive:
+    # truncation > output format > tool arguments.
+    # per_event_floor applies a fixed local event constraint:
+    # hard=min(q*base,-cost), soft=q*base-cost. With turn-equal training q=1.
+    # trajectory_weighted_additive is retained only for unweighted legacy runs;
+    # ordinary GRPO rejects it when trajectory_equal_weight=true.
+    local_cost_mode: per_event_floor
+    output_format_error_cost: 0.2
+    tool_args_error_cost: 0.2
+    truncation_error_cost: 0.5
+    # Independent switch: when false, long but non-truncated responses receive
+    # no local length cost. Hard truncation remains a hard error regardless.
+    soft_overlong_enabled: false
+    overlong_buffer_length: 512
+    overlong_cost_coef: 0.5
+  filter_groups:
+    # The minimum surviving group size remains active during task-balanced
+    # sampling even when algorithm.filter_groups.enable=false, because invalid
+    # trajectories must not create undersized GRPO groups. The reward-std
+    # threshold is used only when algorithm.filter_groups.enable=true. Local
+    # turn errors do not rescue a zero-variance group. When trajectory step
+    # cost is enabled, trajectory_reward already includes that deduction.
+    min_trajectories_after_rollout_filter: 4
+    min_reward_std: 0.3
+  train_generations:
+    log_freq: 10
+    num_samples: 4
+  validation:
+    # Keep a global pool of validation trajectories full. One completed
+    # trajectory is replaced immediately instead of waiting for the slowest
+    # item in a fixed validation batch.
+    dynamic_scheduling: true
+    max_in_flight: 16
+    progress_interval: 10
+    save_detailed_results: true
+    results_dir: null
+  logged_metrics:
+    # "concise" uploads the main training dashboard below. Use "all" while
+    # diagnosing detailed timing, sequence balancing, or worker performance.
+    # Stages: sampling=all attempted prompts; rollout/eligible=valid groups
+    # entering reward-group filtering; train/selected=groups kept by that
+    # filter; train/update=non-padding turns actually sent to the actor.
+    mode: concise
+    drop_prefixes:
+      - critic/
+      - num_turns/
+    include_exact:
+      - actor/loss
+      - actor/pg_loss
+      - actor/lr
+      - actor/grad_norm
+      - actor/ppo_kl
+      - actor/pg_clipfrac
+      - actor/pg_clipfrac_lower
+      - actor/entropy_loss
+      - actor/kl_loss
+      - actor/kl_coef
+      - actor/perf/max_memory_allocated_gb
+      - actor/perf/max_memory_reserved_gb
+      - perf/time_per_step
+      - perf/throughput
+      - timing_s/gen
+      - timing_s/update_actor
+      - timing_s/update_weights
+    include_prefixes:
+      - sampling/
+      - rollout/eligible/
+      - train/selected/
+      - train/update/
+      - filter/
+      - val-core/
+      - val-aux/
+  archive_checkpoints:
+    enable: false
+    dir: null
+
+reward:
+  custom_reward_function:
+    path: visharness/rewards/vision_reward.py
+    name: compute_score
+    reward_kwargs:
+      trajectory_step_cost_enabled: ${visharness.trajectory_reward.enable_step_cost}
+      trajectory_step_cost: ${visharness.trajectory_reward.step_cost}
+  reward_manager:
+    name: naive
+
+trainer:
+  project_name: VisHarness
+  experiment_name: per-turn-grpo
+  val_before_train: false

@@ -1,11 +1,11 @@
 mode: inference
-model_args:
-  model_name: Qwen3-VL-8B
-  tokenizer_path: /path/to/Qwen3-VL-8B-Thinking
+model_args: 
+  model_name: VisionAgent
+  tokenizer_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisionAgent/checkpoints/sft/Qwen3-VL-8B-Thinking/v0-20260518-001941/checkpoint-103
   base_url: http://localhost:8000/v1
   api_key: EMPTY
 
-batch_size: 12
+batch_size: 24
 max_rounds: 12
 # true: dynamic archive; false: retain every historical visual image.
 archive_previous_images: true
@@ -29,15 +29,15 @@ generation_args:
     min_p: 0.0
     repetition_penalty: 1.0
     # return_token_ids: True
-
+    
 dataset_args:
   task_names:
     REC8K
-  split: val
-  dataset_path: /path/to/REC-8K
-  resume_from_ckpt:
-  save_path: outputs/inference/qwen3vl-8b-rec8k-val
+  split: test
+  dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/REC-8K/
+  resume_from_ckpt: 
+  save_path: results/vision_agent_sft_qwen3vl_REC8K_test
   save_trajectory: False
   num_sample: null
-
+  
 verbosity: INFO

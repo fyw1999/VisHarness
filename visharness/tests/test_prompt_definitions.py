@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from visharness import prompts
+from visharness.tools.tool_schemas import TOOL_SCHEMAS
 from visharness.trajectory_runner import legacy_prompts
 
 
@@ -21,6 +22,8 @@ def test_canonical_tool_definitions_are_complete_and_unique():
 
     assert set(tool_names) == EXPECTED_TOOL_NAMES
     assert len(tool_names) == len(set(tool_names))
+    assert set(TOOL_SCHEMAS) == EXPECTED_TOOL_NAMES
+    assert all(TOOL_SCHEMAS[name]["function"]["name"] == name for name in EXPECTED_TOOL_NAMES)
     assert prompts.SubmitFinalAnswer["function"]["name"] == "SubmitFinalAnswer"
     assert prompts.VISION_RESULT_TOOLS == {
         "PhraseToPoint",

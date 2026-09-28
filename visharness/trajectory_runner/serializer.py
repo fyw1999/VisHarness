@@ -18,7 +18,7 @@ from PIL import Image
 import pycocotools.mask as mask_util
 
 from .item import TrajectoryItem
-from .errors import TrajectoryPersistenceError
+from .errors import SFTSnapshotValidationError, TrajectoryPersistenceError
 from .model_client import openai_message_to_assistant_message
 from .openai_action_parser import (
     SUBMIT_FINAL_ANSWER_TOOL,
@@ -44,6 +44,64 @@ def _message_role(message: Any) -> str | None:
     if isinstance(message, dict):
         return message.get("role")
     return getattr(message, "role", None)
+
+
+def _find_string_occurrences(
+    value: Any,
+    needle: str,
+    *,
+    path: str = "$",
+) -> list[tuple[str, str]]:
+    """Return JSON-style paths and values containing ``needle``."""
+
+    if isinstance(value, str):
+        return [(path, value)] if needle in value else []
+
+    occurrences: list[tuple[str, str]] = []
+    if isinstance(value, dict):
+        for key, nested_value in value.items():
+            key_text = str(key)
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key_text):
+                nested_path = f"{path}.{key_text}"
+            else:
+                nested_path = (
+                    f"{path}[{json.dumps(key_text, ensure_ascii=False)}]"
+                )
+            if needle in key_text:
+                occurrences.append((f"{nested_path} (key)", key_text))
+            occurrences.extend(
+                _find_string_occurrences(
+                    nested_value,
+                    needle,
+                    path=nested_path,
+                )
+            )
+    elif isinstance(value, list):
+        for index, nested_value in enumerate(value):
+            occurrences.extend(
+                _find_string_occurrences(
+                    nested_value,
+                    needle,
+                    path=f"{path}[{index}]",
+                )
+            )
+    return occurrences
+
+
+def _format_string_occurrences(
+    occurrences: list[tuple[str, str]],
+    *,
+    limit: int = 10,
+) -> str:
+    details: list[str] = []
+    for path, value in occurrences[:limit]:
+        preview = value if len(value) <= 160 else f"{value[:157]}..."
+        details.append(
+            f"{path}={json.dumps(preview, ensure_ascii=False)}"
+        )
+    if len(occurrences) > limit:
+        details.append(f"... and {len(occurrences) - limit} more occurrence(s)")
+    return ", ".join(details)
 
 
 def strip_tool_response_wrapper(content: Any) -> Any | None:
@@ -201,6 +259,8 @@ class TrajectorySerializer:
                 step_index=step_index,
                 data_generation=data_generation,
             )
+        except SFTSnapshotValidationError:
+            raise
         except TrajectoryPersistenceError:
             raise
         except Exception as exc:
@@ -255,13 +315,20 @@ class TrajectorySerializer:
         for message in messages:
             snapshot["messages"].append(self._serialize_message(message, image_dir, snapshot))
 
-        if data_generation and SUBMIT_FINAL_ANSWER_TOOL in json.dumps(
-            snapshot,
-            ensure_ascii=False,
-        ):
-            raise ValueError(
-                "SFT serialization leaked the data-generation-only SubmitFinalAnswer tool."
+        if data_generation:
+            submit_residuals = _find_string_occurrences(
+                snapshot,
+                SUBMIT_FINAL_ANSWER_TOOL,
             )
+            if submit_residuals:
+                raise SFTSnapshotValidationError(
+                    "SFT snapshot validation failed: "
+                    f"snapshot {snapshot_id!r} still contains the "
+                    f"data-generation-only tool name {SUBMIT_FINAL_ANSWER_TOOL!r} "
+                    "after projection at "
+                    f"{_format_string_occurrences(submit_residuals)}. "
+                    "The snapshot was not written."
+                )
 
         self._append_jsonl(self.save_trajectory_path, snapshot)
 

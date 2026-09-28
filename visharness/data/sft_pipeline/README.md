@@ -74,6 +74,9 @@ snapshot.
 
 Per-source normalized snapshots are written under
 `<output-dir>/postprocessed/<alias>/sft_postprocessed.jsonl` before merging.
+The Swift JSONL keeps image paths relative to the configured image root, for
+example `images/<snapshot-id>/img_0.jpg`. Set Swift's `ROOT_IMAGE_DIR` to the
+build output directory when starting training from another directory.
 
 The four scripts under `key_scripts/` remain as thin compatibility entry
 points, but new jobs should invoke this package directly.

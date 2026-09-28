@@ -1,13 +1,9 @@
 """
 A model worker executes the model.
 """
-import argparse
 import asyncio
-import json
-import time
 import threading
 import uuid
-import os
 import psutil
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, JSONResponse
@@ -60,6 +56,10 @@ GB = 1 << 30
 worker_id = str(uuid.uuid4())[:6]
 logger = build_logger("tool_worker", f"base_tool_worker_{worker_id}.log")
 
+WORKER_READY_CHECK_INTERVAL = 1
+WORKER_READY_CHECK_TIMEOUT = 1
+CONTROLLER_REQUEST_TIMEOUT = 5
+
 def is_cuda_oom_error(error):
     cuda_oom_error = getattr(torch.cuda, "OutOfMemoryError", None)
     if cuda_oom_error is not None and isinstance(error, cuda_oom_error):
@@ -85,8 +85,8 @@ def build_worker_error_response(tool_name, error, remote_traceback=None):
     return response
 
 class BaseToolWorker:
-    def __init__(self,
-                 controller_addr,
+    def __init__(self, 
+                 controller_addr, 
                  worker_name = "",
                  worker_addr = "auto",
                  no_register = False,
@@ -102,7 +102,7 @@ class BaseToolWorker:
             self.worker_addr = f"http://{node_name}:{port}"
         else:
             self.worker_addr = worker_addr
-
+        
         assert tool_name is not None, "tool_name must be specified"
         self.tool_name = tool_name
 
@@ -111,45 +111,83 @@ class BaseToolWorker:
         self.model_semaphore = asyncio.BoundedSemaphore(
             self.limit_model_concurrency
         )
-        self.active_requests = 0
+        self.active_requests = 0 
         self.queue_lock = threading.Lock()
         self.no_register = no_register
-
-
+        self.stop_event = threading.Event()
+        self.registration_thread = None
+        self.heart_beat_thread = None
+        
+       
         self.host = host
         self.port = port
-
+        
         self.global_counter = 0
-
-        if not no_register:
-            self.register_to_controller()
-            self.heart_beat_thread = threading.Thread(
-                target=self.heart_beat_worker)
-            self.heart_beat_thread.daemon = True
-            self.heart_beat_thread.start()
 
         # Set up the routes
         self.app = FastAPI()
         self.init_model()
         self.setup_routes()
+        
+        
+        
 
-
-
-
-    ## HTTP Methods
+    ## HTTP Methods    
     def heart_beat_worker(self):
-        while True:
-            time.sleep(WORKER_HEART_BEAT_INTERVAL)
-            self.send_heart_beat()
+        while not self.stop_event.wait(WORKER_HEART_BEAT_INTERVAL):
+            try:
+                self.send_heart_beat()
+            except Exception as error:
+                logger.error(f"Heart beat failed: {error}")
 
+    def start_heart_beat_thread(self):
+        if self.heart_beat_thread is not None:
+            return
+        self.heart_beat_thread = threading.Thread(
+            target=self.heart_beat_worker,
+            name=f"{self.worker_name}-heart-beat",
+            daemon=True,
+        )
+        self.heart_beat_thread.start()
 
+    def wait_until_ready_and_register(self):
+        status_url = self.worker_addr.rstrip("/") + "/worker_get_status"
+        while not self.stop_event.is_set():
+            try:
+                response = requests.post(
+                    status_url,
+                    timeout=WORKER_READY_CHECK_TIMEOUT,
+                )
+                response.raise_for_status()
+                worker_status = response.json()
+                if self.tool_name not in worker_status.get("model_names", []):
+                    raise RuntimeError(
+                        f"Unexpected readiness response from {status_url}: {worker_status}"
+                    )
+                if worker_status.get("worker_addr") != self.worker_addr:
+                    raise RuntimeError(
+                        f"Readiness response has the wrong worker address: {worker_status}"
+                    )
+                self.register_to_controller()
+            except Exception as error:
+                logger.info(
+                    f"Worker {self.worker_name} is not ready to register: {error}"
+                )
+                self.stop_event.wait(WORKER_READY_CHECK_INTERVAL)
+                continue
+
+            self.start_heart_beat_thread()
+            logger.info(f"Worker {self.worker_name} is ready and registered")
+            return
+
+        
     def release_model_semaphore(self, fn=None):
         self.model_semaphore.release()
         with self.queue_lock:
             self.active_requests -= 1
         if fn is not None:
             fn()
-
+    
     async def acquire_model_semaphore(self):
         self.global_counter += 1
         with self.queue_lock:
@@ -163,7 +201,7 @@ class BaseToolWorker:
             with self.queue_lock:
                 self.active_requests -= 1
             raise
-
+                
     def setup_routes(self):
         @self.app.post("/worker_generate")
         async def api_generate(request: Request):
@@ -212,19 +250,18 @@ class BaseToolWorker:
             finally:
                 if acquired:
                     self.release_model_semaphore()
-
+        
 
         @self.app.post("/worker_get_status")
         async def get_status(request: Request):
             return self.get_status()
-
+        
         @self.app.post("/model_details")
         async def model_details(request: Request):
             pass
-
+        
         @self.app.post("/tool_instruction")
         async def tool_instruction(request: Request):
-            params = await request.json()
             try:
                 tool_instruction = self.get_tool_instruction()
                 return JSONResponse({
@@ -237,7 +274,7 @@ class BaseToolWorker:
                     "text": SERVER_ERROR_MSG,
                     "error_code": ErrorCode.INTERNAL_ERROR
                 }, status_code=500)
-
+    
     def generate_gate(self, params):
         try:
             ret = self.generate(params)
@@ -262,8 +299,8 @@ class BaseToolWorker:
         can override this method without changing the shared HTTP routes.
         """
         return self.generate_gate(params)
-
-
+    
+    
     def register_to_controller(self):
         logger.info("Register to controller")
 
@@ -273,8 +310,12 @@ class BaseToolWorker:
             "check_heart_beat": True,
             "worker_status": self.get_status()
         }
-        r = requests.post(url, json=data)
-        assert r.status_code == 200, f"Failed to register to controller: {r.text}"
+        r = requests.post(
+            url,
+            json=data,
+            timeout=CONTROLLER_REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
 
     def send_heart_beat(self):
         logger.info(f"Send heart beat. Worker: [{self.worker_name}]. "
@@ -283,16 +324,19 @@ class BaseToolWorker:
 
         url = self.controller_addr + "/receive_heart_beat"
 
-        while True:
+        while not self.stop_event.is_set():
             try:
                 ret = requests.post(url, json={
                     "worker_name": self.worker_name,
                     "queue_length": self.get_queue_length()}, timeout=5)
                 exist = ret.json()["exist"]
                 break
-            except requests.exceptions.RequestException as e:
+            except (requests.exceptions.RequestException, ValueError, KeyError) as e:
                 logger.error(f"heart beat error: {e}")
-            time.sleep(5)
+            if self.stop_event.wait(5):
+                return
+        else:
+            return
 
         if not exist:
             self.register_to_controller()
@@ -308,16 +352,33 @@ class BaseToolWorker:
             "queue_length": self.get_queue_length(),
             "worker_addr": self.worker_addr,
         }
-
+    
     # Launch method
     def run(self):
         self.release_port(self.port)
-        uvicorn.run(self.app, host=self.host, port=self.port, log_level="info", log_config=None)
+        if not self.no_register:
+            self.registration_thread = threading.Thread(
+                target=self.wait_until_ready_and_register,
+                name=f"{self.worker_name}-registration",
+                daemon=True,
+            )
+            self.registration_thread.start()
 
+        try:
+            uvicorn.run(
+                self.app,
+                host=self.host,
+                port=self.port,
+                log_level="info",
+                log_config=None,
+            )
+        finally:
+            self.stop_event.set()
+    
     # abstract methods
     def init_model(self):
         pass
-
+    
     @torch.inference_mode()
     def generate(self, params):
         pass
@@ -327,37 +388,43 @@ class BaseToolWorker:
 
     def release_port(self, port: int):
         """
-        查找并强杀占用指定端口的进程
+        Find and forcibly terminate a process that is occupying the port.
         """
-        print(f"🔍 正在检查 {port} 端口是否被占用...")
-
-        # 遍历当前机器上的所有网络连接
+        print(f"Checking whether port {port} is in use...")
+        
+        # Inspect all network connections on this machine.
         for conn in psutil.net_connections(kind='inet'):
-            # 筛选出本地占用该端口，且状态为 LISTEN（监听中）的连接
+            # Find a local connection that is listening on this port.
             if conn.laddr.port == port and conn.status == 'LISTEN':
                 pid = conn.pid
                 if pid:
                     try:
-                        # 根据 PID 获取进程对象
+                        # Resolve the process from its PID.
                         process = psutil.Process(pid)
                         process_name = process.name()
-
-                        print(f"⚠️ 发现进程 '{process_name}' (PID: {pid}) 正在占用 {port} 端口。")
-                        print("🔪 正在尝试结束该进程...")
-
-                        # 相当于执行 kill -9
+                        
+                        print(
+                            f"Process '{process_name}' (PID: {pid}) is using port {port}."
+                        )
+                        print("Attempting to terminate the process...")
+                        
+                        # Equivalent to sending SIGKILL.
                         process.kill()
-
-                        # 等待进程完全退出，确保端口被彻底释放
+                        
+                        # Wait for the process to exit so the port is fully released.
                         process.wait(timeout=3)
-                        print("✅ 端口清理完毕！\n")
+                        print("Port cleanup completed.\n")
                         return
-
+                        
                     except psutil.NoSuchProcess:
-                        print("❌ 进程已经不存在了。")
+                        print("The process no longer exists.")
                     except psutil.AccessDenied:
-                        print("❌ 权限不足！请尝试用 sudo 或管理员权限运行此脚本。")
+                        print(
+                            "Permission denied. Run this script with sufficient privileges."
+                        )
                     except Exception as e:
-                        print(f"❌ 发生未知错误: {e}")
+                        print(f"Unexpected error: {e}")
+                        
+        print(f"Port {port} is available.\n")
 
-        print(f"✅ {port} 端口目前是空闲的，可以安全使用。\n")
+        

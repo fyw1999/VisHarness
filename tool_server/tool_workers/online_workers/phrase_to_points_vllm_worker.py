@@ -7,7 +7,6 @@ os.environ.pop("LD_LIBRARY_PATH", None)
 import uuid
 import re
 import argparse
-import torch
 import numpy as np
 from PIL import ImageDraw
 from tool_server.utils.utils import *
@@ -18,7 +17,7 @@ from tool_server.tool_workers.online_workers.base_tool_worker import (
 )
 import traceback
 from scipy.spatial import cKDTree
-from transformers import AutoProcessor, AutoModelForImageTextToText
+from transformers import AutoProcessor
 from vllm import SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
@@ -35,14 +34,14 @@ def get_downsample_factor(img_name):
         base_name = img_name.rsplit('.', 1)[0]
     else:
         base_name = img_name
-
+        
     super_res_count = 0
     while base_name.endswith('_4x'):
         super_res_count += 1
         base_name = base_name[:-3]
-
+        
     downsample_factor = 4 ** super_res_count
-
+    
     return downsample_factor
 
 def parse_points(points_str: str, img):
@@ -52,7 +51,7 @@ def parse_points(points_str: str, img):
         return np.empty((0, 2))
 
     coords_str = match.group(1)
-
+    
     raw_nums = []
     for n in coords_str.split():
         if n.isdigit():
@@ -62,20 +61,20 @@ def parse_points(points_str: str, img):
         print("no complete points found in data")
         return np.empty((0, 2))
 
-    point_data_all = raw_nums[1:]
+    point_data_all = raw_nums[1:] 
 
     num_complete_points = len(point_data_all) // 3
     if num_complete_points == 0:
         return np.empty((0, 2))
-
+        
     point_data = point_data_all[:num_complete_points * 3]
 
     width, height = img.size
-
+    
     raw_array = np.array(point_data)
 
     points_norm = raw_array.reshape(-1, 3)[:, 1:3]
-
+    
     scale = 1000.0
     points_abs = points_norm / scale * [width, height]
 
@@ -89,7 +88,7 @@ def show_points(points, img, image_name):
         new_height = current_height // down_factor
         img = img.resize((new_width, new_height), resample=Image.Resampling.LANCZOS)
         points = points / down_factor
-
+        
     draw = ImageDraw.Draw(img)
     num_points = len(points)
     MIN_RADIUS = 1.0
@@ -101,39 +100,35 @@ def show_points(points, img, image_name):
         radii = [MAX_RADIUS] * num_points
     else:
         tree = cKDTree(points)
-
+        
         dists, _ = tree.query(points, k=2)
-
+        
         nearest_dists = dists[:, 1]
-
+        
         calculated_radii = nearest_dists * BETA
-
+        
         radii = np.clip(calculated_radii, MIN_RADIUS, MAX_RADIUS)
 
     for (x, y), r in zip(points, radii):
         draw.ellipse(
-            (x - r, y - r, x + r, y + r),
-            fill='DeepPink',
+            (x - r, y - r, x + r, y + r), 
+            fill='DeepPink', 
             outline='white',
             width=1
         )
 
     return img
 
-def format_np_one_decimal(t):
-    t = t.tolist()  # 转 Python list
-    return [[float(f"{v:.1f}".rstrip('0').rstrip('.')) for v in row] for row in t]
-
 class PhraseToPointWorker(BaseToolWorker):
-    def __init__(self,
-                 controller_addr,
+    def __init__(self, 
+                 controller_addr, 
                  worker_name = "",
                  worker_addr = "auto",
                  no_register = False,
-                 model_path = "",
+                 model_path = "", 
                  tool_name = "Point",
-                 load_8bit = False,
-                 load_4bit = False,
+                 load_8bit = False, 
+                 load_4bit = False, 
                  limit_model_concurrency = 1,
                  host = "0.0.0.0",
                  port = None,
@@ -159,7 +154,7 @@ class PhraseToPointWorker(BaseToolWorker):
             host,
             port
             )
-
+        
     def init_model(self):
         logger.info(f"Initializing model {self.tool_name}...")
         engine_args = AsyncEngineArgs(
@@ -172,7 +167,7 @@ class PhraseToPointWorker(BaseToolWorker):
             limit_mm_per_prompt={"image": 1},
         )
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-
+        
         self.processor = AutoProcessor.from_pretrained(self.model_path,
                                                        trust_remote_code=True)
         self.sampling_params = SamplingParams(
@@ -258,7 +253,7 @@ class PhraseToPointWorker(BaseToolWorker):
     async def async_generate(self, params):
         phrase = params.get("phrase", None)
         image_dict = params.get("image_dict", None)  # dict of {image_name: base64_image_data}
-
+        
         if image_dict is None or phrase is None:
             logger.error("Missing required inputs: image or prompts.")
             return {"message": "Missing required inputs: image or prompts", "status": "error"}
@@ -266,7 +261,7 @@ class PhraseToPointWorker(BaseToolWorker):
         phrase = phrase.strip()
         ret = {"message": "", "status": ""}
         logger.info("read arguments success")
-
+        
         try:
             results = {}
             image_items = list(image_dict.items())
@@ -275,7 +270,7 @@ class PhraseToPointWorker(BaseToolWorker):
                 f"Total images to process: {total_images}, "
                 f"max concurrent images per request: {self.max_batch_size}"
             )
-
+            
             for i in range(0, total_images, self.max_batch_size):
                 batch_items = image_items[i : i + self.max_batch_size]
 
@@ -318,12 +313,12 @@ class PhraseToPointWorker(BaseToolWorker):
                 e,
                 remote_traceback=remote_traceback,
             )
-
+            
         return ret
 
     async def generate_gate_async(self, params):
         return await self.async_generate(params)
-
+    
 def str2bool(v):
     if isinstance(v, bool):
         return v

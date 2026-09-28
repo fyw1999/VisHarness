@@ -15,5 +15,9 @@ class TrajectoryVisionEncoderCacheExceededError(RuntimeError):
     """One trajectory cannot continue because a visual input exceeds the encoder cache."""
 
 
+class SFTSnapshotValidationError(RuntimeError):
+    """One trajectory produced an SFT snapshot that violates the output schema."""
+
+
 class TrajectoryPersistenceError(RuntimeError):
     """Checkpoint or SFT trajectory persistence failed."""

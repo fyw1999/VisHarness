@@ -1,0 +1,20 @@
+- name: visharness_agent
+  _target_: visharness.agent_loop.visharness_agent_loop.VisHarnessAgentLoop
+  model_family: ${oc.env:VISHARNESS_MODEL_FAMILY,qwen3_vl}
+  archive_previous_images: true
+  per_turn_max_response_length: ${oc.env:VISHARNESS_PER_TURN_MAX_RESPONSE_LENGTH,1024}
+  rollout_max_prompt_length: ${oc.env:VISHARNESS_ROLLOUT_MAX_PROMPT_LENGTH,49152}
+  # Validation does not use the actor's per-turn training tensor limit. The
+  # launcher sets this to max_model_len - 1 so only the model context remains.
+  validation_max_prompt_length: ${oc.env:VISHARNESS_VALIDATION_MAX_PROMPT_LENGTH,null}
+  max_agent_turns: ${oc.env:VISHARNESS_MAX_AGENT_TURNS,10}
+  validation_max_response_length: ${oc.env:VISHARNESS_VALIDATION_MAX_TOKENS,2048}
+  # Greedy validation: every assistant turn uses the same deterministic
+  # decoding policy, independently of the stochastic training rollout knobs.
+  validation_sampling_params:
+    temperature: ${oc.env:VISHARNESS_VALIDATION_TEMPERATURE,0.0}
+    top_p: ${oc.env:VISHARNESS_VALIDATION_TOP_P,1.0}
+    top_k: ${oc.env:VISHARNESS_VALIDATION_TOP_K,-1}
+    presence_penalty: ${oc.env:VISHARNESS_VALIDATION_PRESENCE_PENALTY,0.0}
+    min_p: ${oc.env:VISHARNESS_VALIDATION_MIN_P,0.0}
+    repetition_penalty: ${oc.env:VISHARNESS_VALIDATION_REPETITION_PENALTY,1.0}

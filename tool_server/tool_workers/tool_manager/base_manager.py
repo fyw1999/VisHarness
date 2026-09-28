@@ -2,7 +2,6 @@ import os
 import requests
 from tool_server.utils.utils import load_json_file
 from tool_server.utils.server_utils import build_logger
-from contextlib import contextmanager
 import time
 import msgpack
 import aiohttp
@@ -90,7 +89,7 @@ class ToolManager(object):
             )
         self.init_online_tools(self.controller_url_location)
         logger.info(f"ToolManager is initialized.")
-        self.headers = {"VisionAgent": "Client"}
+        self.headers = {"VisionAgent": "Client"} 
 
     def init_online_tools(self, controller_url_location=None):
         self.available_tools = []
@@ -101,7 +100,7 @@ class ToolManager(object):
         else:
             self.controller_addr_location = controller_url_location
             logger.info(f"controller_addr exsits, controller_url_location is {controller_url_location}")
-
+        
         if os.path.exists(self.controller_addr_location):
             self.controller_addr = load_json_file(self.controller_addr_location)["controller_addr"]
         else:
@@ -215,7 +214,7 @@ class ToolManager(object):
                     )
 
                 return ret_message
-
+    
     async def async_dynamic_call_tool(self, tool_name, params):
         consecutive_oom_count = 0
         oom_worker_history = []

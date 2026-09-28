@@ -42,6 +42,7 @@ from visharness.prompts import (
 
 from .benchmark import InferenceResourceMonitor
 from .errors import (
+    SFTSnapshotValidationError,
     TrajectoryContextLengthExceededError,
     TrajectoryModelRequestTimeoutError,
     TrajectoryVisionEncoderCacheExceededError,
@@ -637,6 +638,14 @@ class BaseTrajectoryInferencer:
                 reason="vision_encoder_cache_exceeded",
                 stage="model_generation",
                 turn_index=int(item.current_round) + 1,
+                error=exc,
+            )
+        except SFTSnapshotValidationError as exc:
+            return self._abort_invalid_trajectory(
+                item,
+                reason="sft_snapshot_validation_failed",
+                stage="sft_serialization",
+                turn_index=max(int(item.current_round), 1),
                 error=exc,
             )
         except Exception:

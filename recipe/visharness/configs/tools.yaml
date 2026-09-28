@@ -1,0 +1,42 @@
+tools:
+  - class_name: visharness.tools.visual_tool.ControllerBackedVisualTool
+    config:
+      type: native
+      name: PhraseToBoxMask
+      controller_url_location: ${oc.env:VISHARNESS_CONTROLLER_ADDR,tool_server/tool_workers/online_workers/controller_addr/controller_addr.json}
+      max_consecutive_oom: ${oc.env:VISHARNESS_TOOL_MAX_CONSECUTIVE_OOM,5}
+
+  - class_name: visharness.tools.visual_tool.ControllerBackedVisualTool
+    config:
+      type: native
+      name: PhraseToPoint
+      controller_url_location: ${oc.env:VISHARNESS_CONTROLLER_ADDR,tool_server/tool_workers/online_workers/controller_addr/controller_addr.json}
+      max_consecutive_oom: ${oc.env:VISHARNESS_TOOL_MAX_CONSECUTIVE_OOM,5}
+
+  - class_name: visharness.tools.visual_tool.ControllerBackedVisualTool
+    config:
+      type: native
+      name: PointToBoxMask
+      controller_url_location: ${oc.env:VISHARNESS_CONTROLLER_ADDR,tool_server/tool_workers/online_workers/controller_addr/controller_addr.json}
+      max_consecutive_oom: ${oc.env:VISHARNESS_TOOL_MAX_CONSECUTIVE_OOM,5}
+
+  - class_name: visharness.tools.visual_tool.ControllerBackedVisualTool
+    config:
+      type: native
+      name: SplitImageIntoPatches
+      controller_url_location: ${oc.env:VISHARNESS_CONTROLLER_ADDR,tool_server/tool_workers/online_workers/controller_addr/controller_addr.json}
+      max_consecutive_oom: ${oc.env:VISHARNESS_TOOL_MAX_CONSECUTIVE_OOM,5}
+
+  - class_name: visharness.tools.visual_tool.ControllerBackedVisualTool
+    config:
+      type: native
+      name: SuperResolution
+      controller_url_location: ${oc.env:VISHARNESS_CONTROLLER_ADDR,tool_server/tool_workers/online_workers/controller_addr/controller_addr.json}
+      max_consecutive_oom: ${oc.env:VISHARNESS_TOOL_MAX_CONSECUTIVE_OOM,5}
+
+  - class_name: visharness.tools.visual_tool.ControllerBackedVisualTool
+    config:
+      type: native
+      name: MergeBoxMask
+      controller_url_location: ${oc.env:VISHARNESS_CONTROLLER_ADDR,tool_server/tool_workers/online_workers/controller_addr/controller_addr.json}
+      max_consecutive_oom: ${oc.env:VISHARNESS_TOOL_MAX_CONSECUTIVE_OOM,5}

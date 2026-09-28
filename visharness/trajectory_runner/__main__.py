@@ -15,8 +15,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        required=True,
-        help="Path to a JSON or YAML trajectory-runner configuration.",
+        default="/vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisHarness-public/recipe/visharness/configs/trajectory_runner/Kimi_2.5_online_config.yaml",
+        help="Path to a json/yaml config. The old tf_eval config shape is supported.",
     )
     return parser.parse_args()
 

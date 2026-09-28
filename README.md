@@ -1,433 +1,262 @@
-# VisHarness
+> **Project status:** Our paper has been accepted to NeurIPS 2026. We are
+> currently organizing the release. All source code is now publicly available;
+> the model weights and datasets are the remaining artifacts to be released. We
+> expect to complete the full open-source release in the near future.
 
-This is the official code repository for
-[*Train the Agent, Not the Expert: Learning to Harness Heterogeneous Experts
-for Multi-Turn Visual Reasoning*](https://arxiv.org/abs/2605.29894).
+# Visual Expert Server Setup
 
-The current release includes the code for inference, SFT data generation, and
-SFT training. The reinforcement learning (RL) code is not included in this
-release and will be made available in a future update.
-
-Model weights, datasets, generated trajectories, and training checkpoints are
-not included.
-
-## Installation
-
-Clone and install the repository:
+First, configure the controller and local visual tools in
+`tool_server/tool_workers/scripts/launch_scripts/config/controller_local_tools.yaml`.
+Open a dedicated terminal session and run the following command from the project
+root to start the controller and local tools:
 
 ```bash
-git clone https://github.com/fyw1999/VisHarness.git
-cd VisHarness
-python -m pip install -e '.[evaluation,tools,dev]'
+python tool_server/tool_workers/scripts/launch_scripts/start_controller_local_tools.py
 ```
 
-## Visual-tool services
-
-VisHarness uses a controller plus independently deployable tool workers. The
-published production workers are `PhraseToPoint`, `PhraseToBoxMask`,
-`PointToBoxMask`, `SplitImageIntoPatches`, `SuperResolution`, and
-`MergeBoxMask`.
-
-| Tool | Model used by the published worker | Official download |
-| --- | --- | --- |
-| `PhraseToPoint` | Molmo2-4B | [allenai/Molmo2-4B](https://huggingface.co/allenai/Molmo2-4B) |
-| `PhraseToBoxMask` | SAM 3 image model (`sam3.pt`) | [facebook/sam3](https://huggingface.co/facebook/sam3) |
-| `PointToBoxMask` | SAM 3 image model (`sam3.pt`) | [facebook/sam3](https://huggingface.co/facebook/sam3) |
-| `SplitImageIntoPatches` | No learned model; deterministic image tiling | Not applicable |
-| `SuperResolution` | Real-ESRGAN (`realesr-general-x4v3.pth` and `realesr-general-wdn-x4v3.pth`) with GFPGAN (`GFPGANv1.3.pth`) | [Real-ESRGAN x4v3](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth), [Real-ESRGAN WDN x4v3](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-wdn-x4v3.pth), and [GFPGAN v1.3](https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.3.pth) |
-| `MergeBoxMask` | No learned model; deterministic coordinate and mask merging | Not applicable |
-
-SAM 3 requires accepting the model's access conditions on Hugging Face before
-downloading `sam3.pt`; its official implementation and setup instructions are
-available in the [SAM 3 repository](https://github.com/facebookresearch/sam3).
-With the published `SuperResolution` defaults, place all three listed
-checkpoints in the same directory and retain their original filenames. The
-worker derives the WDN and GFPGAN paths from the configured
-`realesr-general-x4v3.pth` path.
-
-Edit the paths, environments, GPU assignments, controller address, and model
-locations in these templates:
-
-- `tool_server/tool_workers/scripts/launch_scripts/config/local_tools_controller.yaml`
-- `tool_server/tool_workers/scripts/launch_scripts/config/remote_controller.yaml`
-
-Start the controller and CPU tools first:
+Next, configure the visual expert model settings in
+`tool_server/tool_workers/scripts/launch_scripts/config/remote_tools.yaml`.
+Open another dedicated terminal session and start the visual expert workers:
 
 ```bash
-python tool_server/tool_workers/scripts/launch_scripts/start_server_local.py \
-  --config tool_server/tool_workers/scripts/launch_scripts/config/local_tools_controller.yaml
+python tool_server/tool_workers/scripts/launch_scripts/start_remote_tools.py
 ```
 
-Start GPU workers on the same or another machine:
+If a single server does not have enough GPU resources, the visual expert models
+can run on a second server, while the controller, local visual tools, and the
+agent training or inference process run on the first server. To set up the
+second server, copy the complete `tool_server/` directory from the project root
+to that server, then configure `remote_tools.yaml` and run
+`start_remote_tools.py` as described above. Configure network routing or port
+forwarding in advance so that the visual expert server can reach the controller
+through the controller address specified in `remote_tools.yaml`. For example,
+the two servers can be connected and the required ports forwarded through
+[Tailscale](https://tailscale.com/).
+
+# SFT Data Generation
+
+The SFT data generation pipeline starts with a seed pool of 4,499 image-text
+pairs drawn from three tasks: GRES, ReasonSeg, and referring expression
+counting. Kimi-K2.5 first generates one tool-augmented trajectory for every
+image-text pair. During generation, the model invokes the visual tools and uses
+their outputs to decide the next step. Each completed trajectory is compared
+with the ground truth, and successful trajectories are selected using a hard
+threshold. Failed examples are then regenerated with Qwen-397B and filtered to
+retain only correct trajectories. Finally, the correct trajectories produced
+by the two models are merged and converted into the required SFT training
+format.
+
+## Step 1: generation with Kimi-K2.5
+
+In `recipe/visharness/scripts/trajectory_runner/start_vLLM_Kimi_K2.5.bash`, set `MODEL_PATH` to the path of your downloaded Kimi-K2.5 model:
 
 ```bash
-python tool_server/tool_workers/scripts/launch_scripts/start_server_local.py \
-  --config tool_server/tool_workers/scripts/launch_scripts/config/remote_controller.yaml
+MODEL_PATH="/path/to/downloaded/Kimi-K2.5"
 ```
 
-## Inference
-
-Start an OpenAI-compatible Qwen3-VL endpoint. `MODEL_PATH` may point to either
-the base model or a VisHarness SFT checkpoint:
+Then run the launch script from the project root:
 
 ```bash
-MODEL_PATH=/path/to/Qwen3-VL-8B-Thinking \
-bash recipe/visharness/scripts/trajectory_runner/start_vllm_qwen3vl_8b.sh
+bash recipe/visharness/scripts/trajectory_runner/start_vLLM_Kimi_K2.5.bash
 ```
 
-Copy and edit the inference template, then run:
+After the vLLM server is running, configure the data generation settings in
+`recipe/visharness/configs/trajectory_runner/Kimi_2.5_online_config.yaml`.
+Under `dataset_args`, set `dataset_path` to the path of the seed data pool and
+set `save_path` to the path where the generated results should be saved:
 
-```bash
-cp recipe/visharness/configs/trajectory_runner/inference_qwen3vl_8b.example.yaml \
-  local_inference.yaml
-
-python -m visharness.trajectory_runner --config local_inference.yaml
+```yaml
+dataset_args:
+  dataset_path: /path/to/seed/data
+  save_path: training_data/SFT/Kimi-K2.5-VisionAgent-4K
+  resume_from_ckpt:
 ```
 
-## SFT workflow
+A relative `save_path` is resolved from the project root. An absolute
+`save_path` can also be provided and is used unchanged.
 
-The current data-generation recipe uses a cascaded teacher setup. Kimi-K2.5
-first processes the complete training set. Qwen3.5-397B-A17B-FP8 then processes
-only the samples that were not accepted from the Kimi run.
+If data generation is interrupted, set `resume_from_ckpt` to the path of the
+generated `*_ckpt.jsonl` checkpoint file to resume from the previous progress:
 
-```text
-Training image-text pairs
-        |
-        v
-Kimi-K2.5 trajectory generation
-        |
-        v
-Filter accepted Kimi trajectories ------------------+
-        |                                             |
-        +--> accepted_ids.jsonl                       |
-                     |                                |
-                     v                                |
-        Qwen3.5 generation on remaining samples       |
-                     |                                |
-                     v                                |
-        Filter accepted Qwen trajectories             |
-                     |                                |
-                     +--------------------+-----------+
-                                          |
-                                          v
-                         postprocess -> merge -> Swift
-                                          |
-                                          v
-                                     SFT training
+```yaml
+dataset_args:
+  resume_from_ckpt: training_data/SFT/Kimi-K2.5-VisionAgent-4K/Kimi-K2.5-VisionAgent-4K_ckpt.jsonl
 ```
 
-Run all commands below from the repository root:
+Like `save_path`, a relative `resume_from_ckpt` path is resolved from the
+project root, while an absolute path is used unchanged. The trajectory runner
+raises an error if a configured checkpoint file does not exist.
 
-```bash
-cd /path/to/VisHarness
-```
-
-## Prerequisites
-
-Before generating trajectories:
-
-1. Install the project and its runtime dependencies in the intended
-   environment.
-2. Start the visual-tool controller and all required tool workers.
-3. Make the training manifests and benchmark annotations available locally.
-4. Update model and dataset paths in the trajectory-runner YAML files for the
-   current machine.
-5. Start an OpenAI-compatible model endpoint. The provided generation configs
-   use `http://localhost:8000/v1` by default.
-
-The model-server scripts require `MODEL_PATH`; optional environment variables
-such as `TP_SIZE`, `SERVED_MODEL_NAME`, and `GPU_MEMORY_UTILIZATION` override
-the published defaults.
-
-## 1. Generate trajectories with Kimi-K2.5
-
-Review the Kimi configuration first:
-
-[`recipe/visharness/configs/trajectory_runner/data_generation_kimi_k2_5.example.yaml`](recipe/visharness/configs/trajectory_runner/data_generation_kimi_k2_5.example.yaml)
-
-At minimum, verify:
-
-- `model_args.base_url` and `model_args.model_name`
-- `dataset_args.dataset_path`
-- `dataset_args.save_path`
-- `batch_size`, `max_rounds`, and `generation_args`
-
-Start the Kimi vLLM server:
-
-```bash
-MODEL_PATH=/path/to/Kimi-K2.5 \
-bash recipe/visharness/scripts/trajectory_runner/start_vllm_kimi_k2_5.sh
-```
-
-Run trajectory generation in another terminal:
+After completing the configuration, run the trajectory runner from the project
+root with the Kimi-K2.5 configuration:
 
 ```bash
 python -m visharness.trajectory_runner \
-  --config recipe/visharness/configs/trajectory_runner/data_generation_kimi_k2_5.example.yaml
+  --config recipe/visharness/configs/trajectory_runner/Kimi_2.5_online_config.yaml
 ```
 
-With the repository defaults, outputs are written to:
+Generating the full dataset can take a long time—approximately 10 hours on our
+hardware. The actual runtime depends on the available hardware.
 
-```text
-outputs/data_generation/Kimi-K2.5-VisionAgent-4K/
+## Step 2: filter Kimi-K2.5 trajectories
+
+After Kimi-K2.5 finishes generating trajectories, compare the generated
+results with the ground-truth annotations and retain the successful
+trajectories:
+
+```bash
+python -m visharness.data.sft_pipeline filter \
+  --checkpoint training_data/SFT/Kimi-K2.5-VisionAgent-4K/Kimi-K2.5-VisionAgent-4K_ckpt.jsonl \
+  --trajectory training_data/SFT/Kimi-K2.5-VisionAgent-4K/Kimi-K2.5-VisionAgent-4K_trajectory.jsonl \
+  --output-dir training_data/SFT/Kimi-K2.5-VisionAgent-4K \
+  --rec8k-annotations /path/to/REC-8K/annotations.json \
+  --gres-dataset-root /path/to/GRES \
+  --reasonseg-dataset-root /path/to/ReasonSeg/train
 ```
 
-The trajectory runner writes the following primary artifacts:
+Set `--rec8k-annotations` to the REC8K annotation JSON file,
+`--gres-dataset-root` to the GRES dataset directory, and
+`--reasonseg-dataset-root` to the ReasonSeg training-data directory.
 
-| Artifact | Description |
-| --- | --- |
-| `Kimi-K2.5-VisionAgent-4K_ckpt.jsonl` | One final checkpoint record per processed trajectory, including status, termination reason, final visual result, and runtime metrics. |
-| `Kimi-K2.5-VisionAgent-4K_trajectory.jsonl` | Per-turn conversation snapshots eligible for downstream SFT filtering. |
-| `images/` | Original and tool-produced visualization images referenced by the snapshots. |
-| `benchmark_run.json` | Summary for the latest generation run. |
-| `benchmark_runs.jsonl` | Append-only history of generation-run summaries. |
-| `resource_trace.jsonl` | Optional GPU/resource samples when resource tracing is enabled. |
+The command writes the following files to `--output-dir`:
 
-An invalid, truncated, or parameter-invalid model turn is not saved as an SFT
-target. If the model corrects itself after environment feedback, a later valid
-turn may still become an SFT snapshot. Historical assistant errors may remain
-in the context, but only the target assistant turn receives loss after Swift
-conversion.
+- `accepted_sft_snapshots.jsonl`: SFT snapshots for the trajectories that
+  Kimi-K2.5 completed successfully. These snapshots are used by the later
+  `build` step.
+- `accepted_checkpoints.jsonl`: Checkpoints for successful samples.
+- `rejected_checkpoints.jsonl`: Checkpoints for failed samples.
+- `accepted_ids.jsonl`: IDs of samples already completed successfully by
+  Kimi-K2.5. A later Qwen data-generation run can use these IDs to skip those
+  samples.
+- `filter_decisions.jsonl`: The filtering decision and reason for each
+  trajectory.
+- `filter_report.json`: Aggregate filtering statistics. For example, one of
+  our runs retained 2,573 successful trajectories and rejected 1,926 failed
+  trajectories.
 
-### Resume an interrupted Kimi run
+## Step 3: generation with Qwen3.5-397B
 
-Add the existing Kimi checkpoint to `dataset_args.resume_from_ckpt`:
+In
+`recipe/visharness/scripts/trajectory_runner/start_vLLM_qwen_3.5_397B-A17B-FP8.bash`,
+set `MODEL_PATH` to the path of your downloaded Qwen3.5-397B-A17B-FP8 model:
+
+```bash
+MODEL_PATH="/path/to/downloaded/Qwen3.5-397B-A17B-FP8"
+```
+
+Then run the launch script from the project root to start Qwen3.5-397B:
+
+```bash
+bash recipe/visharness/scripts/trajectory_runner/start_vLLM_qwen_3.5_397B-A17B-FP8.bash
+```
+
+After the vLLM server is running, configure
+`recipe/visharness/configs/trajectory_runner/Qwen3.5-397B-A17B-FP8_online_config.yaml`.
+For the initial Qwen3.5-397B generation run, set `resume_from_ckpt` to the
+`accepted_ids.jsonl` file produced by the Kimi-K2.5 filtering step. This makes
+Qwen3.5-397B skip the samples that Kimi-K2.5 has already completed
+successfully:
 
 ```yaml
 dataset_args:
   resume_from_ckpt:
-    - outputs/data_generation/Kimi-K2.5-VisionAgent-4K/Kimi-K2.5-VisionAgent-4K_ckpt.jsonl
+    - training_data/SFT/Kimi-K2.5-VisionAgent-4K/accepted_ids.jsonl
 ```
 
-The resumed run skips IDs already present in that checkpoint.
-
-## 2. Filter Kimi trajectories
-
-Set the dataset locations for the current machine:
-
-```bash
-export DATASET_ROOT=/path/to/datasets
-export KIMI_RUN_DIR=outputs/data_generation/Kimi-K2.5-VisionAgent-4K
-```
-
-Run the filter:
-
-```bash
-python -m visharness.data.sft_pipeline filter \
-  --checkpoint "${KIMI_RUN_DIR}/Kimi-K2.5-VisionAgent-4K_ckpt.jsonl" \
-  --trajectory "${KIMI_RUN_DIR}/Kimi-K2.5-VisionAgent-4K_trajectory.jsonl" \
-  --output-dir "${KIMI_RUN_DIR}" \
-  --rec8k-annotations "${DATASET_ROOT}/REC-8K/annotations.json" \
-  --gres-dataset-root "${DATASET_ROOT}/GRES" \
-  --reasonseg-dataset-root "${DATASET_ROOT}/ReasonSeg/train"
-```
-
-Default acceptance thresholds are:
-
-| Dataset | Metric | Threshold |
-| --- | --- | ---: |
-| GRES | Mask IoU | 0.70 |
-| ReasonSeg | Mask IoU | 0.70 |
-| REC-8K | Relative count error | 0.30 |
-| All applicable tasks | Aspect-ratio tolerance | 0.05 |
-
-A trajectory is accepted only if the model submitted a final answer and its
-task metric passed the configured threshold. A valid final answer submitted on
-the last allowed turn is accepted. A trajectory that produced a valid visual
-result but never submitted a final answer is rejected.
-
-The filter writes:
-
-| Artifact | Description |
-| --- | --- |
-| `accepted_checkpoints.jsonl` | Complete checkpoint records for accepted trajectories. |
-| `rejected_checkpoints.jsonl` | Complete checkpoint records for rejected trajectories. |
-| `accepted_sft_snapshots.jsonl` | Accepted SFT snapshots consumed by `build`. |
-| `accepted_ids.jsonl` | Compact accepted-ID list used by cascaded generation. |
-| `filter_decisions.jsonl` | Per-trajectory decision, metric, and rejection reason. |
-| `filter_report.json` | Aggregate filter counts, thresholds, and dataset metadata. |
-
-## 3. Generate remaining trajectories with Qwen3.5
-
-Stop the Kimi model server before starting Qwen if both use the same GPUs and
-port. Review the Qwen configuration:
-
-[`recipe/visharness/configs/trajectory_runner/data_generation_qwen3_5_397b.example.yaml`](recipe/visharness/configs/trajectory_runner/data_generation_qwen3_5_397b.example.yaml)
-
-Its `dataset_args.resume_from_ckpt` should include the Kimi
-`accepted_ids.jsonl`. This causes Qwen to process only the samples that were not
-accepted from the Kimi run.
-
-Start Qwen3.5:
-
-```bash
-MODEL_PATH=/path/to/Qwen3.5-397B-A17B-FP8 \
-bash recipe/visharness/scripts/trajectory_runner/start_vllm_qwen3_5_397b.sh
-```
-
-Run trajectory generation:
-
-```bash
-python -m visharness.trajectory_runner \
-  --config recipe/visharness/configs/trajectory_runner/data_generation_qwen3_5_397b.example.yaml
-```
-
-The default output directory is:
-
-```text
-outputs/data_generation/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/
-```
-
-### Resume an interrupted Qwen run
-
-Keep the Kimi accepted-ID file and add Qwen's own checkpoint:
+If Qwen3.5-397B generation is interrupted, restart it with both the Kimi-K2.5
+accepted IDs and the Qwen3.5-397B checkpoint:
 
 ```yaml
 dataset_args:
   resume_from_ckpt:
-    - outputs/data_generation/Kimi-K2.5-VisionAgent-4K/accepted_ids.jsonl
-    - outputs/data_generation/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_ckpt.jsonl
+    - training_data/SFT/Kimi-K2.5-VisionAgent-4K/accepted_ids.jsonl
+    - training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_ckpt.jsonl
 ```
 
-The first file skips samples already solved by Kimi. The second skips samples
-already processed by the interrupted Qwen run.
-
-## 4. Filter Qwen trajectories
+After completing the configuration, run the trajectory runner from the
+project root:
 
 ```bash
-export QWEN_RUN_DIR=outputs/data_generation/Qwen3.5-397B-A17B-FP8-VisionAgent-4K
+python -m visharness.trajectory_runner \
+  --config recipe/visharness/configs/trajectory_runner/Qwen3.5-397B-A17B-FP8_online_config.yaml
+```
 
+The Qwen3.5-397B generation process takes approximately 4 hours on our
+hardware. The actual runtime depends on the available hardware.
+
+## Step 4: filter Qwen3.5-397B trajectories
+
+After Qwen3.5-397B finishes generating trajectories, filter the generated
+results against the ground-truth annotations:
+
+```bash
 python -m visharness.data.sft_pipeline filter \
-  --checkpoint "${QWEN_RUN_DIR}/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_ckpt.jsonl" \
-  --trajectory "${QWEN_RUN_DIR}/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_trajectory.jsonl" \
-  --output-dir "${QWEN_RUN_DIR}" \
-  --rec8k-annotations "${DATASET_ROOT}/REC-8K/annotations.json" \
-  --gres-dataset-root "${DATASET_ROOT}/GRES" \
-  --reasonseg-dataset-root "${DATASET_ROOT}/ReasonSeg/train"
+  --checkpoint training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_ckpt.jsonl \
+  --trajectory training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_trajectory.jsonl \
+  --output-dir training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K \
+  --rec8k-annotations /path/to/REC-8K/annotations.json \
+  --gres-dataset-root /path/to/GRES \
+  --reasonseg-dataset-root /path/to/ReasonSeg/train
 ```
 
-After filtering, both run directories must contain an
-`accepted_sft_snapshots.jsonl` file.
+Set `--rec8k-annotations` to the REC8K annotation JSON file,
+`--gres-dataset-root` to the GRES dataset directory, and
+`--reasonseg-dataset-root` to the ReasonSeg training-data directory.
 
-## 5. Build the final SFT dataset
+## Step 5: build the SFT dataset
 
-`build` consumes only explicitly filtered `accepted_sft_snapshots.jsonl`
-files. It does not read raw checkpoints or score trajectories again.
+After filtering the Qwen3.5-397B trajectories, build the final SFT dataset.
+This step performs the following operations:
 
-Use a new or empty output directory for each build:
+1. Post-process each data source.
+2. Merge the two datasets and their images.
+3. Filter samples that may cause training OOM errors based on the visual patch
+   limit.
+4. Convert the merged data to the Swift SFT format.
+
+Run the following command from the project root:
 
 ```bash
-export BUILD_DIR=outputs/sft_data/Kimi-Qwen-Merged-$(date +%Y%m%d)
-
 python -m visharness.data.sft_pipeline build \
-  --source "Kimi-K2.5=${KIMI_RUN_DIR}/accepted_sft_snapshots.jsonl" \
-  --image-root "Kimi-K2.5=${KIMI_RUN_DIR}" \
-  --source "Qwen3.5-397B-A17B-FP8=${QWEN_RUN_DIR}/accepted_sft_snapshots.jsonl" \
-  --image-root "Qwen3.5-397B-A17B-FP8=${QWEN_RUN_DIR}" \
-  --output-dir "${BUILD_DIR}" \
+  --source Kimi-K2.5=training_data/SFT/Kimi-K2.5-VisionAgent-4K/accepted_sft_snapshots.jsonl \
+  --image-root Kimi-K2.5=training_data/SFT/Kimi-K2.5-VisionAgent-4K \
+  --source Qwen3.5-397B-A17B-FP8=training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/accepted_sft_snapshots.jsonl \
+  --image-root Qwen3.5-397B-A17B-FP8=training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K \
+  --output-dir training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k \
   --merged-name merged_sft_data.jsonl \
   --swift-name merged_sft_data_swift_cmd.jsonl \
   --image-max-token-num 2048 \
   --max-total-raw-image-patches 56000
 ```
 
-The build consists of three stages:
+The two visual-budget arguments control image preprocessing and memory usage:
 
-1. **Postprocess** normalizes the system prompt and message content, removes
-   generation-only tool-specific guidance while retaining the shared visual
-   verification prompt, removes `SubmitFinalAnswer` artifacts, and validates
-   every SFT target.
-2. **Merge** requires disjoint trajectory IDs across sources, preserves sample
-   identity, adds source metadata, and copies every referenced image.
-3. **Swift conversion** emits `ms-swift` messages, assigns loss only to the
-   explicit target assistant output, and excludes samples exceeding 56,000
-   aggregate pre-merge Qwen3-VL image patches while retaining the merged
-   source snapshot for audit.
+- `--image-max-token-num` sets the maximum number of visual tokens produced
+  for each individual image after Qwen3-VL smart resizing. Images are resized
+  as needed to remain within this per-image limit.
+- `--max-total-raw-image-patches` sets the maximum total number of raw vision
+  patches across all image occurrences in one training sample. Samples that
+  exceed this limit are excluded from the Swift training file to reduce the
+  risk of training OOM errors.
 
-The output layout is:
+The generated SFT dataset is stored in
+`training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k`.
+Within this directory, `merged_sft_data_swift_cmd.jsonl` is the final training
+dataset in the format required by the Swift training framework. Use this file
+as the dataset input for SFT training.
 
-```text
-<BUILD_DIR>/
-├── postprocessed/
-│   ├── Kimi-K2.5/
-│   │   └── sft_postprocessed.jsonl
-│   └── Qwen3.5-397B-A17B-FP8/
-│       └── sft_postprocessed.jsonl
-├── images/
-├── merged_sft_data.jsonl
-├── merged_sft_data_swift_cmd.jsonl
-├── visual_budget_decisions.jsonl
-├── merge_report.json
-└── sft_pipeline_report.json
-```
+# SFT Training
 
-The final training dataset consists of
-`merged_sft_data_swift_cmd.jsonl` **and** `images/`. The Swift file contains
-paths to images under the build directory and is not a standalone text-only
-dataset.
-
-Keep `merged_sft_data.jsonl`, `merge_report.json`, and
-`sft_pipeline_report.json` for auditing and reproducibility. The
-`postprocessed/` directory contains per-source intermediate snapshots and is
-useful when diagnosing source-specific failures.
-
-## 6. Launch SFT training
-
-The provided full-parameter training recipe is:
-
-[`recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh`](recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh)
-
-The dataset must point to the Swift file produced by the current build:
-
-```text
-<BUILD_DIR>/merged_sft_data_swift_cmd.jsonl
-```
-
-Start training:
+In `recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh`, set
+`MODEL_PATH` to the path of the downloaded model to fine-tune, such as a
+Qwen3-VL model:
 
 ```bash
-MODEL_PATH=/path/to/Qwen3-VL-8B-Thinking \
-DATASET_PATH="${BUILD_DIR}/merged_sft_data_swift_cmd.jsonl" \
-OUTPUT_DIR=outputs/sft/Qwen3-VL-8B-Thinking \
+MODEL_PATH="/path/to/downloaded/Qwen3-VL-8B-Thinking"
+```
+
+Then run the training script from the project root:
+
+```bash
 bash recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh
 ```
-
-The current recipe uses:
-
-- eight GPUs;
-- full-parameter tuning of Qwen3-VL-8B-Thinking;
-- BF16 and DeepSpeed ZeRO-3;
-- FlashAttention 2, gradient checkpointing, and Liger Kernel;
-- `IMAGE_MAX_TOKEN_NUM=2048` and `max_length=25848`;
-- sequence parallel size 2;
-- per-device batch size 1 with 32 gradient-accumulation steps; and
-- an optional logging backend selected with `REPORT_TO`.
-
-By default, checkpoints are written to:
-
-```text
-outputs/sft/Qwen3-VL-8B-Thinking/
-```
-
-## Inspect a run
-
-Inspect filter summaries:
-
-```bash
-python -m json.tool "${KIMI_RUN_DIR}/filter_report.json"
-python -m json.tool "${QWEN_RUN_DIR}/filter_report.json"
-```
-
-Inspect the build summary:
-
-```bash
-python -m json.tool "${BUILD_DIR}/sft_pipeline_report.json"
-```
-
-Before rebuilding, remove only the corresponding build output directory or
-choose a new one. Do not remove the original model-run checkpoints,
-trajectories, filtered snapshots, or image directories; they are the inputs
-required to reproduce the build.
-
-For implementation details and individual pipeline commands, see
-[`visharness/data/sft_pipeline/README.md`](visharness/data/sft_pipeline/README.md).
