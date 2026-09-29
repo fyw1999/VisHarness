@@ -266,14 +266,82 @@ dataset takes approximately 2 hours and 45 minutes (roughly 3 hours) on eight
 NVIDIA A100-SXM4-80GB GPUs. The actual runtime depends on the hardware, dataset
 size, and training configuration.
 
-To inspect the data that will be passed to the model during SFT, set
-`model_id_or_path` and `dataset_path` in `scripts/debug_swift_sft.py`, then run
-the script from the project root:
-
-```bash
-python scripts/debug_swift_sft.py
-```
+To inspect the data that will be passed to the model during SFT, use the
+`debug_swift_sft.py` helper included in the checkout after setting its
+`model_id_or_path` and `dataset_path` values.
 
 The script prints one encoded SFT training sample to the console, including the
 complete model input and the supervised portion that is used to compute the
 training loss.
+
+# RL Training
+
+## Step 1: prepare the training and validation parquet files
+
+RL training uses all 4,499 image-text pairs from the VisionAgent-4K training
+manifests. Generate the training parquet from the project root:
+
+```bash
+python visharness/data/prepare_verl_data.py \
+  --source-root /path/to/VisionAgent-4K \
+  --rec8k-anno-path /path/to/REC-8K/annotations.json \
+  --gres-data-root /path/to/GRES \
+  --reasonseg-data-root /path/to/ReasonSeg/train \
+  --output-dir training_data/GRPO/verl_visharness \
+  --val-ratio 0 \
+  --shuffle true \
+  --seed 42 \
+  --overwrite true
+```
+
+`--val-ratio 0` keeps all 4,499 examples in the training parquet because
+checkpoint evaluation uses the separate fixed validation set built below.
+With the complete source manifests, the training data contains 1,600 GRES,
+2,660 REC-8K, and 239 ReasonSeg samples. The generated files are:
+
+```text
+training_data/GRPO/verl_visharness/
+├── train.parquet
+└── images/
+```
+
+Next, build the fixed 300-sample validation set from the official validation
+splits:
+
+```bash
+python -m visharness.data.prepare_official_validation \
+  --rec8k-data-root /path/to/REC-8K \
+  --gres-data-root /path/to/GRES \
+  --reasonseg-data-root /path/to/ReasonSeg \
+  --train-manifest-root /path/to/VisionAgent-4K \
+  --output-dir training_data/GRPO/verl_visharness_official_val \
+  --samples-per-task 100 \
+  --seed 42 \
+  --overwrite true
+```
+
+The validation builder selects 100 examples from each of ReasonSeg, GRES, and
+REC-8K. `--train-manifest-root` is used only to exclude and audit training IDs
+and images; samples from the training manifests are never added to the
+validation set. The generated files are:
+
+```text
+training_data/GRPO/verl_visharness_official_val/
+├── val.parquet
+├── selection_report.json
+├── manifests/
+└── images/
+```
+
+By default, neither parquet embeds the system prompt. During training and
+validation, `VisHarnessDataset` injects the current
+`TRAIN_TEST_SYSTEM_PROMPT` before multimodal prompt-length filtering, while the
+tool schemas are loaded dynamically from the tool configuration. Pass
+`--embed-system-prompt` to either data-preparation command only when a
+self-contained parquet is required.
+
+Both builders are deterministic when the source data, code version,
+dependencies, command-line arguments, and seed are unchanged. The parquet
+stores absolute image paths, so the datasets should normally be generated on
+the machine and under the project checkout used for training. The RL launcher
+expects the two parquet files at the default output locations shown above.
