@@ -5,6 +5,23 @@
 
 # Visual Expert Server Setup
 
+VisHarness exposes six visual tools. The default model or processing backend
+used by each tool is summarized below:
+
+| Tool | Model or backend | Purpose |
+| --- | --- | --- |
+| `PhraseToPoint` | Molmo2-4B | Predicts the center point of each object matching a text phrase. |
+| `PhraseToBoxMask` | SAM 3 (`sam3.pt`) | Detects and segments objects from a text prompt. |
+| `PointToBoxMask` | SAM 3 (`sam3.pt`, interactive point prompting) | Converts point prompts into object bounding boxes and masks. |
+| `SuperResolution` | Real-ESRGAN (`realesr-general-x4v3`) with GFPGAN v1.3 face enhancement | Produces 4x super-resolved images and restores detected faces. |
+| `SplitImageIntoPatches` | Deterministic CPU image processing; no learned model | Splits an image into overlapping patches and produces an overview. |
+| `MergeBoxMask` | Rule-based CPU geometry and mask processing; no learned model | Restores coordinates and merges boxes and masks across images or patches. |
+
+Model checkpoint paths and worker resources are configured in
+`tool_server/tool_workers/scripts/launch_scripts/config/remote_tools.yaml`.
+`SplitImageIntoPatches` and `MergeBoxMask` run as local CPU tools and therefore
+do not require model checkpoints.
+
 First, configure the controller and local visual tools in
 `tool_server/tool_workers/scripts/launch_scripts/config/controller_local_tools.yaml`.
 Open a dedicated terminal session and run the following command from the project
