@@ -62,6 +62,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-long-edge", type=int, default=1920)
     parser.add_argument("--max-short-edge", type=int, default=1080)
+    parser.add_argument(
+        "--embed-system-prompt",
+        action="store_true",
+        help=(
+            "Embed the current system prompt in parquet rows. By default only the user "
+            "message is stored and VisHarnessDataset injects the prompt at runtime."
+        ),
+    )
     parser.add_argument("--overwrite", type=parse_bool, default=False, metavar="{true,false}")
     return parser.parse_args()
 
@@ -543,6 +551,7 @@ def _build_validation_rows(
     gref: G_REFER,
     max_long_edge: int,
     max_short_edge: int,
+    embed_system_prompt: bool,
     rng: random.Random,
 ) -> list[dict[str, Any]]:
     task_roots = {
@@ -568,6 +577,7 @@ def _build_validation_rows(
                 reasonseg_root=reasonseg_root,
                 max_long_edge=max_long_edge,
                 max_short_edge=max_short_edge,
+                embed_system_prompt=embed_system_prompt,
             )
             source_path = source_root / str(item["image_path"])
             original_width, original_height = _original_image_size(source_path)
@@ -702,6 +712,7 @@ def main() -> None:
         gref=gref,
         max_long_edge=args.max_long_edge,
         max_short_edge=args.max_short_edge,
+        embed_system_prompt=args.embed_system_prompt,
         rng=random.Random(args.seed),
     )
     expected_rows = len(TASK_ORDER) * args.samples_per_task
@@ -716,6 +727,7 @@ def main() -> None:
         "total_samples": len(rows),
         "max_long_edge": args.max_long_edge,
         "max_short_edge": args.max_short_edge,
+        "system_prompt_embedded": args.embed_system_prompt,
         "parquet": {
             "path": str(parquet_path),
             "samples": len(rows),

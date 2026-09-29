@@ -1,9 +1,11 @@
 import random
+import sys
 
 from visharness.data.prepare_official_validation import (
     _largest_remainder_quotas,
     _legacy_rec_frame_filter,
     _sample_strata,
+    parse_args,
 )
 
 
@@ -43,3 +45,19 @@ def test_stratified_sampler_preserves_unique_images_and_zero_quota():
     )
     assert len(selected) == 2
     assert {item["image_key"] for item in selected} == {"image-1", "image-2"}
+
+
+def test_official_validation_cli_does_not_embed_prompt_by_default(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["prepare_official_validation.py"])
+
+    assert parse_args().embed_system_prompt is False
+
+
+def test_official_validation_cli_can_embed_prompt(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["prepare_official_validation.py", "--embed-system-prompt"],
+    )
+
+    assert parse_args().embed_system_prompt is True

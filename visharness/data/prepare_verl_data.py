@@ -62,6 +62,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-samples", type=int, default=-1, help="Limit raw samples for a smoke test; -1 keeps all.")
     parser.add_argument("--max-long-edge", type=int, default=1920)
     parser.add_argument("--max-short-edge", type=int, default=1080)
+    parser.add_argument(
+        "--embed-system-prompt",
+        action="store_true",
+        help=(
+            "Embed the current system prompt in parquet rows. By default only the user "
+            "message is stored and VisHarnessDataset injects the prompt at runtime."
+        ),
+    )
     parser.add_argument("--overwrite", type=parse_bool, default=False, metavar="{true,false}")
     return parser.parse_args()
 
@@ -239,6 +247,14 @@ def build_ground_truth(
     raise ValueError(f"Unsupported sample id: {item_id}")
 
 
+def build_prompt(user_content: str, *, embed_system_prompt: bool = False) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+    if embed_system_prompt:
+        messages.append({"role": "system", "content": TRAIN_TEST_SYSTEM_PROMPT.strip()})
+    messages.append({"role": "user", "content": user_content})
+    return messages
+
+
 def build_row(
     item: dict[str, Any],
     index: int,
@@ -249,6 +265,7 @@ def build_row(
     reasonseg_root: Path,
     max_long_edge: int,
     max_short_edge: int,
+    embed_system_prompt: bool = False,
 ) -> dict[str, Any]:
     item_id = item["id"]
     source_path = source_root / item["image_path"]
@@ -266,10 +283,10 @@ def build_row(
     return {
         "data_source": data_source,
         "agent_name": "visharness_agent",
-        "prompt": [
-            {"role": "system", "content": TRAIN_TEST_SYSTEM_PROMPT.strip()},
-            {"role": "user", "content": user_content},
-        ],
+        "prompt": build_prompt(
+            user_content,
+            embed_system_prompt=embed_system_prompt,
+        ),
         "images": [{"image": str(output_path)}],
         "reward_model": {
             "style": "rule",
@@ -284,6 +301,7 @@ def build_row(
             "image_path": str(output_path),
             "image_height": height,
             "image_width": width,
+            "system_prompt_embedded": embed_system_prompt,
         },
     }
 
@@ -368,6 +386,7 @@ def main() -> None:
                     reasonseg_root=args.reasonseg_data_root,
                     max_long_edge=args.max_long_edge,
                     max_short_edge=args.max_short_edge,
+                    embed_system_prompt=args.embed_system_prompt,
                 )
             )
         except Exception as error:
@@ -377,6 +396,7 @@ def main() -> None:
     if not rows:
         raise RuntimeError("No samples were converted successfully")
 
+    print(f"Embed system prompt in parquet: {args.embed_system_prompt}")
     print(f"Shuffle split rows: {args.shuffle}")
     train_rows, val_rows = stratified_split(rows, args.val_ratio, args.seed, args.shuffle)
     write_parquet(train_rows, train_path)

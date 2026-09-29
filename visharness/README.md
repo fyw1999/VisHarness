@@ -35,6 +35,10 @@ python visharness/data/prepare_verl_data.py --overwrite true
 
 The complete files are written to
 `training_data/GRPO/verl_visharness/{train,val}.parquet` by default.
+By default, parquet rows contain only the user message. `VisHarnessDataset`
+injects the current canonical system prompt before prompt-length filtering and
+rollout. Pass `--embed-system-prompt` only when a self-contained parquet file
+is required.
 
 Build the fixed 300-sample checkpoint-selection set from the official
 ReasonSeg, GRES, and REC-8K validation splits:
@@ -52,6 +56,6 @@ default and saves per-checkpoint validation summaries under
 `<checkpoint_dir>/validation/global_step_<N>/`.
 
 The trajectory runner, verl tool adapters, and data preparation code all read
-their prompt/tool definitions from `visharness/prompts/visual_agent.py`. Prompt
-text is embedded in generated parquet rows, so regenerate the parquet files
-after changing a system prompt if the change should affect a new training run.
+their prompt/tool definitions from `visharness/prompts/visual_agent.py`.
+Changing the canonical RL system prompt takes effect when a new training or
+validation process loads the parquet; the parquet does not need to be rebuilt.
