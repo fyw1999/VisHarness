@@ -44,7 +44,12 @@ Build the fixed 300-sample checkpoint-selection set from the official
 ReasonSeg, GRES, and REC-8K validation splits:
 
 ```bash
-python -m visharness.data.prepare_official_validation --overwrite true
+python -m visharness.data.prepare_official_validation \
+  --rec8k-data-root /path/to/REC-8K \
+  --gres-data-root /path/to/GRES \
+  --reasonseg-data-root /path/to/ReasonSeg \
+  --train-manifest-root /path/to/VisionAgent-4K \
+  --overwrite true
 ```
 
 This writes `training_data/GRPO/verl_visharness_official_val/val.parquet`,

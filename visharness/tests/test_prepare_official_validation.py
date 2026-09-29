@@ -1,5 +1,6 @@
 import random
 import sys
+from pathlib import Path
 
 from visharness.data.prepare_official_validation import (
     _largest_remainder_quotas,
@@ -61,3 +62,25 @@ def test_official_validation_cli_can_embed_prompt(monkeypatch):
     )
 
     assert parse_args().embed_system_prompt is True
+
+
+def test_official_validation_cli_accepts_individual_dataset_roots(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "prepare_official_validation.py",
+            "--rec8k-data-root",
+            "/datasets/rec8k",
+            "--gres-data-root",
+            "/datasets/gres",
+            "--reasonseg-data-root",
+            "/datasets/reasonseg",
+        ],
+    )
+
+    args = parse_args()
+
+    assert args.rec8k_data_root == Path("/datasets/rec8k")
+    assert args.gres_data_root == Path("/datasets/gres")
+    assert args.reasonseg_data_root == Path("/datasets/reasonseg")

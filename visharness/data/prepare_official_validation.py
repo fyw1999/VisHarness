@@ -50,7 +50,21 @@ REC_COUNT_QUOTAS_100 = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--datasets-root", type=Path, default=DEFAULT_DATASETS_ROOT)
+    parser.add_argument(
+        "--rec8k-data-root",
+        type=Path,
+        default=DEFAULT_DATASETS_ROOT / "REC-8K",
+    )
+    parser.add_argument(
+        "--gres-data-root",
+        type=Path,
+        default=DEFAULT_DATASETS_ROOT / "GRES",
+    )
+    parser.add_argument(
+        "--reasonseg-data-root",
+        type=Path,
+        default=DEFAULT_DATASETS_ROOT / "ReasonSeg",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--train-manifest-root",
@@ -545,7 +559,9 @@ def _original_image_size(path: Path) -> tuple[int, int]:
 def _build_validation_rows(
     selected_by_task: dict[str, list[dict[str, Any]]],
     *,
-    datasets_root: Path,
+    rec8k_data_root: Path,
+    gres_data_root: Path,
+    reasonseg_data_root: Path,
     output_dir: Path,
     annotations: dict[str, Any],
     gref: G_REFER,
@@ -555,11 +571,11 @@ def _build_validation_rows(
     rng: random.Random,
 ) -> list[dict[str, Any]]:
     task_roots = {
-        "ReasonSeg": datasets_root / "ReasonSeg",
-        "GRES": datasets_root / "GRES",
-        "REC8K": datasets_root / "REC-8K",
+        "ReasonSeg": reasonseg_data_root,
+        "GRES": gres_data_root,
+        "REC8K": rec8k_data_root,
     }
-    reasonseg_root = datasets_root / "ReasonSeg/val"
+    reasonseg_root = reasonseg_data_root / "val"
     rows: list[dict[str, Any]] = []
 
     for task in TASK_ORDER:
@@ -647,9 +663,9 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     train_ids, train_images, train_sources = _load_train_exclusions(args.train_manifest_root)
-    rec_root = args.datasets_root / "REC-8K"
+    rec_root = args.rec8k_data_root
     annotations = _load_json(rec_root / "annotations.json")
-    gref = G_REFER(str(args.datasets_root / "GRES"), dataset="grefcoco", splitBy="unc")
+    gref = G_REFER(str(args.gres_data_root), dataset="grefcoco", splitBy="unc")
 
     selected_by_task: dict[str, list[dict[str, Any]]] = {}
     task_reports: dict[str, Any] = {}
@@ -659,7 +675,7 @@ def main() -> None:
         task_rng = random.Random(args.seed + offset)
         if task == "ReasonSeg":
             selected, report = select_reasonseg(
-                args.datasets_root / "ReasonSeg",
+                args.reasonseg_data_root,
                 args.samples_per_task,
                 rng=task_rng,
                 train_ids=train_ids,
@@ -667,7 +683,7 @@ def main() -> None:
             )
         elif task == "GRES":
             selected, report = select_gres(
-                args.datasets_root / "GRES",
+                args.gres_data_root,
                 args.samples_per_task,
                 gref=gref,
                 rng=task_rng,
@@ -706,7 +722,9 @@ def main() -> None:
 
     rows = _build_validation_rows(
         selected_by_task,
-        datasets_root=args.datasets_root,
+        rec8k_data_root=args.rec8k_data_root,
+        gres_data_root=args.gres_data_root,
+        reasonseg_data_root=args.reasonseg_data_root,
         output_dir=output_dir,
         annotations=annotations,
         gref=gref,
@@ -728,6 +746,11 @@ def main() -> None:
         "max_long_edge": args.max_long_edge,
         "max_short_edge": args.max_short_edge,
         "system_prompt_embedded": args.embed_system_prompt,
+        "dataset_roots": {
+            "REC8K": str(args.rec8k_data_root.resolve()),
+            "GRES": str(args.gres_data_root.resolve()),
+            "ReasonSeg": str(args.reasonseg_data_root.resolve()),
+        },
         "parquet": {
             "path": str(parquet_path),
             "samples": len(rows),
