@@ -345,3 +345,23 @@ dependencies, command-line arguments, and seed are unchanged. The parquet
 stores absolute image paths, so the datasets should normally be generated on
 the machine and under the project checkout used for training. The RL launcher
 expects the two parquet files at the default output locations shown above.
+
+## Step 2: launch RL training
+
+Before starting RL training, configure
+`recipe/visharness/scripts/rl/train_visharness.sh`. In particular, set
+`MODEL_PATH` to the SFT checkpoint that will initialize the RL policy and set
+`EXPERIMENT_NAME` to a unique name for the run. For example:
+
+```bash
+MODEL_PATH="${MODEL_PATH:-${PROJECT_ROOT}/checkpoints/sft/Qwen3-VL-8B-Thinking/<sft-run>/checkpoint-<step>}"
+EXPERIMENT_NAME="${EXPERIMENT_NAME:-my-visharness-grpo-run}"
+```
+
+The launcher derives the checkpoint and validation-output directories from
+`EXPERIMENT_NAME`. After the visual expert services are running and these
+parameters have been configured, start RL training from the project root:
+
+```bash
+bash recipe/visharness/scripts/rl/train_visharness.sh
+```
