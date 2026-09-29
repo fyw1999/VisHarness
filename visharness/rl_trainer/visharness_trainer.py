@@ -4075,25 +4075,6 @@ class VisHarnessTrainer(RayDAPOTrainer):
                             "train/selected",
                         )
                     )
-                    raw_step_abs_mass = float(np.sum(raw_trajectory_metrics["step_absolute_credit_masses"]))
-                    kept_step_abs_mass = float(np.sum(kept_trajectory_metrics["step_absolute_credit_masses"]))
-                    step_abs_keep_ratio = (
-                        kept_step_abs_mass / raw_step_abs_mass
-                        if raw_step_abs_mass > 1e-12
-                        else 1.0
-                    )
-                    raw_groups_with_step_signal = sum(
-                        absolute_credit > 1e-12
-                        for absolute_credit in raw_trajectory_metrics["group_step_absolute_credit"].values()
-                    )
-                    kept_groups_with_step_signal = sum(
-                        absolute_credit > 1e-12
-                        for absolute_credit in kept_trajectory_metrics["group_step_absolute_credit"].values()
-                    )
-                    metrics["filter/step_absolute_credit_keep_ratio"] = float(step_abs_keep_ratio)
-                    metrics["filter/dropped_prompt_groups_with_step_signal"] = float(
-                        max(raw_groups_with_step_signal - kept_groups_with_step_signal, 0)
-                    )
                     metrics["sampling/invalid_trajectory_rate"] = rollout_invalid_trajectory_attempts / max(
                         generated_trajectory_attempts, 1
                     )
