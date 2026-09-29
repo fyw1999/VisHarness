@@ -14,6 +14,10 @@ data:
   val_max_prompt_length: ${oc.env:VISHARNESS_VALIDATION_MAX_PROMPT_LENGTH,null}
   prompt_key: prompt
   image_key: images
+  # Replace the parquet system message with the current canonical RL prompt
+  # before initial prompt-length filtering. AgentLoop then consumes the same
+  # updated raw_prompt, so filtering and rollout cannot drift.
+  dynamic_system_prompt: true
   return_raw_chat: true
   return_multi_modal_inputs: false
   tool_config_path: recipe/visharness/configs/tools.yaml
