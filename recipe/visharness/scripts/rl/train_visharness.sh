@@ -5,7 +5,7 @@ set -euo pipefail
 # Run from anywhere. Every value below can be overridden with an environment
 # variable, while additional Hydra overrides can still be passed as arguments.
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)}"
-PYTHON_BIN="${PYTHON_BIN:-/vepfs-dev/metro/hantao/miniconda3/envs/AgentRL/bin/python}"
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python)}"
 CACHE_ROOT="${CACHE_ROOT:-/vepfs-dev/metro/hantao/nwp_bench/fyw/cache}"
 RAY_TMP_ROOT="${RAY_TMP_ROOT:-${CACHE_ROOT}/ray-tmp}"
 RAY_TMP_LINK="${RAY_TMP_LINK:-/tmp/fyw-ray}"

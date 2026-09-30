@@ -3,6 +3,63 @@
 > the model weights and datasets are the remaining artifacts to be released. We
 > expect to complete the full open-source release in the near future.
 
+# Environment Setup
+
+The environment files target Linux x86_64 systems with an NVIDIA driver
+compatible with CUDA 12.8.
+
+## Step 1: clone the repository and initialize verl
+
+```bash
+git clone --recurse-submodules https://github.com/fyw1999/VisHarness.git
+cd VisHarness
+```
+
+If the repository was cloned without submodules, initialize verl before
+creating the environment:
+
+```bash
+git submodule update --init --recursive
+```
+
+## Step 2: create the main environment
+
+Run the following commands from the repository root. This is required because
+the environment installs the checked-out verl submodule in editable mode.
+
+```bash
+conda env create -f environment/VisHarness.yml
+conda activate VisHarness
+python -m pip check
+```
+
+`VisHarness` is the main environment for data generation, evaluation, SFT, RL,
+the tool controller, and the two local CPU tools. The GPU-backed visual experts
+use isolated environments because their model stacks have different Python and
+runtime requirements.
+
+## Step 3: create the visual expert environments
+
+Create all three expert environments with:
+
+```bash
+bash environment/create_expert_envs.sh
+```
+
+The script creates `Molmo`, `SAM`, and `SuperResolution` from the versioned
+files under `environment/experts/`. Existing environments are left unchanged.
+Model checkpoints are not downloaded by these environment files and must be
+configured separately as described below.
+
+## Step 4: verify the environments
+
+```bash
+conda run -n VisHarness python -c "import torch, vllm, verl, visharness"
+conda run -n Molmo python -c "import torch, transformers, vllm"
+conda run -n SAM python -c "import torch, sam3"
+conda run -n SuperResolution python -c "import basicsr, gfpgan, realesrgan"
+```
+
 # Visual Expert Server Setup
 
 VisHarness exposes six visual tools. The default model or processing backend
@@ -19,8 +76,9 @@ used by each tool is summarized below:
 
 After downloading the model checkpoints, set the corresponding `model-path`
 values in `tool_server/tool_workers/scripts/launch_scripts/config/remote_tools.yaml`.
-We recommend using a dedicated Conda environment for each visual expert model;
-configure the corresponding `conda_env` values in the same file.
+The provided `Molmo`, `SAM`, and `SuperResolution` environments match the
+default `conda_env` values in that file. If custom environment names are used,
+update the corresponding values before launching the workers.
 `SplitImageIntoPatches` and `MergeBoxMask` run as local CPU tools and therefore
 do not require model checkpoints.
 

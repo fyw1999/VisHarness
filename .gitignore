@@ -9,8 +9,10 @@
 
 # Reproducible Conda environment exports.
 !/environment/
-!/environment/*.yaml
-!/environment/*.yml
+!/environment/**/
+!/environment/**/*.yaml
+!/environment/**/*.yml
+!/environment/**/*.sh
 
 # VisHarness implementation.
 !/visharness/

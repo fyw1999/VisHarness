@@ -13,7 +13,7 @@ per-turn prompts/images used during rollout before updating the actor.
 debugger for inspecting exact model inputs, responses, loss tokens, turn
 records, and rewards.
 
-Run commands from the repository root after activating the AgentRL runtime
+Run commands from the repository root after activating the VisHarness runtime
 environment.
 
 ## Per-turn training
@@ -23,7 +23,7 @@ bash recipe/visharness/scripts/rl/train_visharness.sh
 ```
 
 The script contains runnable defaults for the current VisionAgent workspace,
-including the model, parquet files, AgentRL Python, eight-GPU training
+including the model, parquet files, VisHarness Python, eight-GPU training
 configuration, caches, and checkpoint directory. Override a script variable
 when needed, for example:
 

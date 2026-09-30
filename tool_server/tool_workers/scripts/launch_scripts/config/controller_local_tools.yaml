@@ -1,5 +1,4 @@
 controller_config:
-  conda_env: "VisionAgent"
   worker_name: controller
   job_name: controller
   calculate_type: control
@@ -12,7 +11,6 @@ tool_worker_config:
   - SplitImageIntoPatches:
       SplitImageIntoPatches_h20_1:
         calculate_type: control
-        conda_env: "VisionAgent"
         cmd:
           limit-model-concurrency: 20
           cpu-worker-threads: 8
@@ -24,7 +22,6 @@ tool_worker_config:
   - MergeBoxMask:
       MergeBoxMask_h20_1:
         calculate_type: control
-        conda_env: "VisionAgent"
         cmd:
           limit-model-concurrency: 20
           cpu-worker-threads: 8
