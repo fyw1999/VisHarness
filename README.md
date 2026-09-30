@@ -10,12 +10,12 @@ used by each tool is summarized below:
 
 | Tool | Model or backend | Purpose |
 | --- | --- | --- |
-| `PhraseToPoint` | Molmo2-4B | Predicts the center point of each object matching a text phrase. |
-| `PhraseToBoxMask` | SAM 3 (`sam3.pt`) | Detects and segments objects from a text prompt. |
-| `PointToBoxMask` | SAM 3 (`sam3.pt`, interactive point prompting) | Converts point prompts into object bounding boxes and masks. |
-| `SuperResolution` | Real-ESRGAN (`realesr-general-x4v3`) with GFPGAN v1.3 face enhancement | Produces 4x super-resolved images and restores detected faces. |
-| `SplitImageIntoPatches` | Deterministic CPU image processing; no learned model | Splits an image into overlapping patches and produces an overview. |
-| `MergeBoxMask` | Rule-based CPU geometry and mask processing; no learned model | Restores coordinates and merges boxes and masks across images or patches. |
+| `PhraseToPoint` | [Molmo2-4B](https://huggingface.co/allenai/Molmo2-4B) | Returns the center points of all objects matching a complex text description, including attributes, relative positions, and other constraints. |
+| `PhraseToBoxMask` | [SAM 3](https://github.com/facebookresearch/sam3) (`sam3.pt`) | Returns bounding boxes and masks for all objects matching a simple noun-phrase description. |
+| `PointToBoxMask` | [SAM 3](https://github.com/facebookresearch/sam3) (`sam3.pt`) | Converts supplied center points into object bounding boxes and masks. |
+| `SuperResolution` | [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) (`realesr-general-x4v3`) with [GFPGAN](https://github.com/TencentARC/GFPGAN) v1.3 face enhancement | Produces 4x super-resolved images and restores detected faces. |
+| `SplitImageIntoPatches` | [Pillow](https://python-pillow.github.io/); deterministic CPU processing with no learned model | Splits an image into overlapping patches so that small targets occupy a larger proportion of each relevant patch, and produces an overview. |
+| `MergeBoxMask` | [OpenCV](https://opencv.org/); rule-based CPU geometry and mask processing with no learned model | Merges results from different patches and maps the final bounding boxes and masks back to their locations in the original image. |
 
 Model checkpoint paths and worker resources are configured in
 `tool_server/tool_workers/scripts/launch_scripts/config/remote_tools.yaml`.
