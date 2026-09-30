@@ -8,7 +8,7 @@
 VisHarness exposes six visual tools. The default model or processing backend
 used by each tool is summarized below:
 
-| Tool | Model or backend | Purpose |
+| Experts/Tools | Model or backend | Purpose |
 | --- | --- | --- |
 | `PhraseToPoint` | [Molmo2-4B](https://huggingface.co/allenai/Molmo2-4B) | Returns the center points of all objects matching a complex text description, including attributes, relative positions, and other constraints. |
 | `PhraseToBoxMask` | [SAM 3](https://huggingface.co/facebook/sam3) (`sam3.pt`) | Returns bounding boxes and masks for all objects matching a simple noun-phrase description. |
@@ -17,8 +17,10 @@ used by each tool is summarized below:
 | `SplitImageIntoPatches` | Deterministic CPU processing; no learned model | Splits an image into overlapping patches so that small targets occupy a larger proportion of each relevant patch, and produces an overview. |
 | `MergeBoxMask` | Rule-based CPU geometry and mask processing; no learned model | Merges results from different patches and maps the final bounding boxes and masks back to their locations in the original image. |
 
-Model checkpoint paths and worker resources are configured in
-`tool_server/tool_workers/scripts/launch_scripts/config/remote_tools.yaml`.
+After downloading the model checkpoints, set the corresponding `model-path`
+values in `tool_server/tool_workers/scripts/launch_scripts/config/remote_tools.yaml`.
+We recommend using a dedicated Conda environment for each visual expert model;
+configure the corresponding `conda_env` values in the same file.
 `SplitImageIntoPatches` and `MergeBoxMask` run as local CPU tools and therefore
 do not require model checkpoints.
 
