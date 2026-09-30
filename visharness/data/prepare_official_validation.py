@@ -31,7 +31,6 @@ from visharness.data.prepare_verl_data import (
 )
 
 
-DEFAULT_DATASETS_ROOT = Path("/vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets")
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "training_data/GRPO/verl_visharness_official_val"
 
 TASK_ORDER = ("ReasonSeg", "GRES", "REC8K")
@@ -53,23 +52,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--rec8k-data-root",
         type=Path,
-        default=DEFAULT_DATASETS_ROOT / "REC-8K",
+        required=True,
     )
     parser.add_argument(
         "--gres-data-root",
         type=Path,
-        default=DEFAULT_DATASETS_ROOT / "GRES",
+        required=True,
     )
     parser.add_argument(
         "--reasonseg-data-root",
         type=Path,
-        default=DEFAULT_DATASETS_ROOT / "ReasonSeg",
+        required=True,
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--train-manifest-root",
         type=Path,
-        default=DEFAULT_DATASETS_ROOT / "VisionAgent-4K",
+        required=True,
         help="Used only to audit and exclude train IDs/images.",
     )
     parser.add_argument("--samples-per-task", type=int, default=100)

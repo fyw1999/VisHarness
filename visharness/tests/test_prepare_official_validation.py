@@ -10,6 +10,19 @@ from visharness.data.prepare_official_validation import (
 )
 
 
+def _required_cli_args() -> list[str]:
+    return [
+        "--rec8k-data-root",
+        "/datasets/rec8k",
+        "--gres-data-root",
+        "/datasets/gres",
+        "--reasonseg-data-root",
+        "/datasets/reasonseg",
+        "--train-manifest-root",
+        "/datasets/visionagent-4k",
+    ]
+
+
 def test_largest_remainder_quotas_are_exact_and_deterministic():
     assert _largest_remainder_quotas({"a": 1, "b": 1, "c": 1}, 5) == {
         "a": 1,
@@ -49,7 +62,11 @@ def test_stratified_sampler_preserves_unique_images_and_zero_quota():
 
 
 def test_official_validation_cli_does_not_embed_prompt_by_default(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["prepare_official_validation.py"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["prepare_official_validation.py", *_required_cli_args()],
+    )
 
     assert parse_args().embed_system_prompt is False
 
@@ -58,7 +75,11 @@ def test_official_validation_cli_can_embed_prompt(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["prepare_official_validation.py", "--embed-system-prompt"],
+        [
+            "prepare_official_validation.py",
+            *_required_cli_args(),
+            "--embed-system-prompt",
+        ],
     )
 
     assert parse_args().embed_system_prompt is True
@@ -76,6 +97,8 @@ def test_official_validation_cli_accepts_individual_dataset_roots(monkeypatch):
             "/datasets/gres",
             "--reasonseg-data-root",
             "/datasets/reasonseg",
+            "--train-manifest-root",
+            "/datasets/visionagent-4k",
         ],
     )
 

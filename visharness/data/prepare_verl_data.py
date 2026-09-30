@@ -23,8 +23,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from visharness.prompts import TRAIN_TEST_SYSTEM_PROMPT
 from visharness.evaluate.grefer import G_REFER
 
-DEFAULT_DATASETS_ROOT = Path("/vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets")
-DEFAULT_SOURCE_ROOT = DEFAULT_DATASETS_ROOT / "VisionAgent-4K"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "training_data/GRPO/verl_visharness"
 
 
@@ -44,10 +42,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Convert raw VisionAgent-4K annotations into verl-compatible parquet files."
     )
-    parser.add_argument("--source-root", type=Path, default=DEFAULT_SOURCE_ROOT)
-    parser.add_argument("--rec8k-anno-path", type=Path, default=DEFAULT_DATASETS_ROOT / "REC-8K/annotations.json")
-    parser.add_argument("--gres-data-root", type=Path, default=DEFAULT_DATASETS_ROOT / "GRES")
-    parser.add_argument("--reasonseg-data-root", type=Path, default=DEFAULT_DATASETS_ROOT / "ReasonSeg/train")
+    parser.add_argument("--source-root", type=Path, required=True)
+    parser.add_argument("--rec8k-anno-path", type=Path, required=True)
+    parser.add_argument("--gres-data-root", type=Path, required=True)
+    parser.add_argument("--reasonseg-data-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--input-pattern", default="*train.json")
     parser.add_argument("--val-ratio", type=float, default=0.05)
