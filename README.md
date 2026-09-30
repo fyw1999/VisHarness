@@ -5,9 +5,6 @@
 
 # Environment Setup
 
-The environment files target Linux x86_64 systems with an NVIDIA driver
-compatible with CUDA 12.8.
-
 ## Step 1: clone the repository and initialize verl
 
 ```bash
@@ -109,6 +106,11 @@ forwarding in advance so that the visual expert server can reach the controller
 through the controller address specified in `remote_tools.yaml`. For example,
 the two servers can be connected and the required ports forwarded through
 [Tailscale](https://tailscale.com/).
+
+Keep the controller, local tools, and remote visual expert workers running
+throughout SFT data generation, inference, and RL training, because all three
+workflows call this service. Standalone SFT training consumes the prepared
+dataset and does not require the visual expert service.
 
 # SFT Data Generation
 
