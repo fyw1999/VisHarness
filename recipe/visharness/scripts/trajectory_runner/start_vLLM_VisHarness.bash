@@ -15,8 +15,10 @@ fi
 export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 unset LD_PRELOAD
 echo ">>> Starting the vLLM server..."
+# The wrapper preserves vLLM arguments/output and records live startup KV
+# capacities automatically for the trajectory runner's memory benchmark.
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-vllm serve "$MODEL" \
+python "$PROJECT_ROOT/visharness/trajectory_runner/vllm_launch.py" serve "$MODEL" \
     --served-model-name VisHarness \
     --tensor-parallel-size 1 \
     --data-parallel-size 4 \

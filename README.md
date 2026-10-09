@@ -428,11 +428,15 @@ enables GPU memory and vLLM resource monitoring and defaults to `false`.
 When enabling it, set `gpu_indices` to the serving GPUs and
 `tensor_parallel_size` to the server's TP size (not its number of replicas).
 Peak active KV memory is calculated separately for each replica before taking
-the maximum. If vLLM does not expose its KV pool capacity, usage is still
-recorded, but active memory is `N/A` unless you supply the actual capacity
-through `kv_cache_pool_gib_per_gpu` (a GiB/GPU value, or a map of engine IDs
-to values). Do not substitute total GPU memory. Use an otherwise idle serving
-service for comparisons: resource metrics include other traffic on that service.
+the maximum. The deployment script automatically saves startup information
+under `outputs/vllm/` and registers each replica's capacity locally. The runner
+uses this record when `/metrics` omits the capacity, checking that the serving
+process, model, and port still match. No capacity setting is needed in YAML.
+Records from stopped/replaced services are ignored. This automatic fallback
+requires the local service to be started with the provided deployment script;
+unavailable or unsupported capacity is reported as `N/A`, never guessed from
+total GPU memory. Use an otherwise idle serving service for comparisons:
+resource metrics include other traffic on that service.
 
 MLLM request time includes client preparation, server queueing, network time,
 and SDK retries; expert-call time also includes queueing and response processing.

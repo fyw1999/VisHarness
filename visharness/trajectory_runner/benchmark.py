@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .vllm_launch import load_startup_record
+
 logger = logging.getLogger(__name__)
 
 _VLLM_METRICS = {
@@ -182,6 +184,7 @@ def _calculate_kv_cache_capacity(
     tensor_parallel_size: int,
     pipeline_parallel_size: int,
     pool_gib_override: Any = None,
+    capacity_tokens_override: int | None = None,
 ) -> dict[str, Any]:
     """Calculate the physical KV-cache pool capacity allocated per GPU."""
 
@@ -201,7 +204,10 @@ def _calculate_kv_cache_capacity(
         }
 
     raw_explicit_bytes = cache_config.get("kv_cache_memory_bytes")
-    if raw_explicit_bytes not in {None, "", "None", "null"}:
+    if (
+        capacity_tokens_override is None
+        and raw_explicit_bytes not in {None, "", "None", "null"}
+    ):
         pool_bytes = _positive_int(
             raw_explicit_bytes,
             "vLLM kv_cache_memory_bytes",
@@ -213,20 +219,34 @@ def _calculate_kv_cache_capacity(
             "pool_gib_per_gpu": pool_bytes / 1024**3,
         }
 
-    try:
-        num_gpu_blocks = _positive_int(
-            cache_config.get("num_gpu_blocks"), "vLLM num_gpu_blocks"
+    if capacity_tokens_override is not None:
+        capacity_tokens = _positive_int(
+            capacity_tokens_override, "vLLM startup KV capacity tokens"
         )
-        block_size = _positive_int(
-            cache_config.get("block_size"), "vLLM block_size"
+        try:
+            block_size = _positive_int(cache_config.get("block_size"), "vLLM block_size")
+        except (TypeError, ValueError):
+            block_size = None
+        num_gpu_blocks = (
+            capacity_tokens // block_size
+            if block_size and capacity_tokens % block_size == 0 else None
         )
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "vLLM does not expose usable KV-cache capacity; set "
-            "benchmark.kv_cache_pool_gib_per_gpu to the actual KV pool "
-            "capacity per GPU (not total GPU memory). Usage remains available."
-        ) from exc
-    capacity_tokens = num_gpu_blocks * block_size
+    else:
+        try:
+            num_gpu_blocks = _positive_int(
+                cache_config.get("num_gpu_blocks"), "vLLM num_gpu_blocks"
+            )
+            block_size = _positive_int(
+                cache_config.get("block_size"), "vLLM block_size"
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "KV capacity is absent from /metrics and no matching live "
+                "startup record is available. Deploy with "
+                "start_vLLM_VisHarness.bash to record it automatically. "
+                "KV usage remains available."
+            ) from exc
+        capacity_tokens = num_gpu_blocks * block_size
 
     config_path = _model_config_file(model_config_path)
     with config_path.open("r", encoding="utf-8") as file:
@@ -250,7 +270,7 @@ def _calculate_kv_cache_capacity(
     ):
         raise ValueError(
             "Automatic KV capacity requires full-attention KV geometry; "
-            "set benchmark.kv_cache_pool_gib_per_gpu for hybrid/MLA models"
+            "hybrid/MLA cache geometry is not supported by this calculation"
         )
 
     total_layers = _positive_int(
@@ -311,7 +331,11 @@ def _calculate_kv_cache_capacity(
     pool_bytes = capacity_tokens * bytes_per_token_per_gpu
     return {
         "available": True,
-        "calculation_method": "vllm_blocks_and_model_kv_geometry",
+        "calculation_method": (
+            "vllm_startup_tokens_and_model_kv_geometry"
+            if capacity_tokens_override is not None
+            else "vllm_blocks_and_model_kv_geometry"
+        ),
         "model_config_path": str(config_path),
         "num_gpu_blocks": num_gpu_blocks,
         "block_size_tokens": block_size,
@@ -395,6 +419,7 @@ class InferenceResourceMonitor:
         self._capacity_signatures: dict[str, str] = {}
         self._capacity_errors: dict[str, str] = {}
         self._peak_kv_usage_by_engine: dict[str, float] = {}
+        self._startup_engines: set[str] = set()
         self._kv_cache_capacity: dict[str, Any] | None = None
         self._kv_cache_capacity_error: str | None = None
         self._peak_requests_running: float | None = None
@@ -490,27 +515,60 @@ class InferenceResourceMonitor:
             engine = engine_id(labels)
             usage_by_engine[engine] = max(usage_by_engine.get(engine, 0.0), value)
 
-        engines = set(self._cache_config_by_engine) | set(usage_by_engine)
+        startup = load_startup_record(
+            self.vllm_metrics_url, model_name=self.model_name,
+            model_config_path=self.model_config_path,
+        )
+        self._startup_engines = set(startup["engines"]) if startup else set()
+        engines = (
+            set(self._cache_config_by_engine) | set(usage_by_engine)
+            | self._startup_engines
+        )
         for engine in engines:
-            cache_config = self._cache_config_by_engine.get(engine, {})
+            cache_config = dict(self._cache_config_by_engine.get(engine, {}))
+            startup_capacity = startup["engines"].get(engine) if startup else None
+            if startup_capacity and cache_config.get("cache_dtype", "auto") == "auto":
+                cache_config["cache_dtype"] = startup["model_dtype"]
             override = self.kv_cache_pool_gib_per_gpu_override
             if isinstance(override, dict):
                 override = override.get(
                     engine,
                     override.get(int(engine)) if engine.isdigit() else None,
                 )
-            signature = json.dumps([cache_config, override], sort_keys=True)
+            signature = json.dumps(
+                [cache_config, override, startup_capacity,
+                 startup["server_process"] if startup else None],
+                sort_keys=True,
+            )
             if self._capacity_signatures.get(engine) == signature:
                 continue
             self._capacity_signatures[engine] = signature
             try:
                 self._capacity_by_engine[engine] = _calculate_kv_cache_capacity(
                     cache_config,
-                    model_config_path=self.model_config_path,
-                    tensor_parallel_size=self.tensor_parallel_size,
-                    pipeline_parallel_size=self.pipeline_parallel_size,
+                    model_config_path=(
+                        startup["model_config_path"]
+                        if startup_capacity else self.model_config_path
+                    ),
+                    tensor_parallel_size=(
+                        startup["tensor_parallel_size"]
+                        if startup_capacity else self.tensor_parallel_size
+                    ),
+                    pipeline_parallel_size=(
+                        startup["pipeline_parallel_size"]
+                        if startup_capacity else self.pipeline_parallel_size
+                    ),
                     pool_gib_override=override,
+                    capacity_tokens_override=(
+                        startup_capacity["capacity_tokens"]
+                        if startup_capacity else None
+                    ),
                 )
+                if startup_capacity:
+                    self._capacity_by_engine[engine].update({
+                        "startup_log": startup["startup_log"],
+                        "server_process": startup["server_process"],
+                    })
                 self._capacity_errors.pop(engine, None)
             except Exception as exc:
                 self._capacity_by_engine.pop(engine, None)
@@ -718,6 +776,7 @@ class InferenceResourceMonitor:
         )
         known_engines = (
             set(self._cache_config_by_engine) | set(self._peak_kv_usage_by_engine)
+            | self._startup_engines
         )
         active_kv_complete = bool(known_engines) and all(
             engine in self._capacity_by_engine

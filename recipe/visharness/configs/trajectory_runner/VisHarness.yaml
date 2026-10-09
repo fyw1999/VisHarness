@@ -17,10 +17,6 @@ benchmark:
   gpu_indices: [0, 1, 2, 3]
   # Must match the vLLM server's -tp/--tensor-parallel-size value.
   tensor_parallel_size: 1
-  # Optional actual KV pool capacity in GiB/GPU if vLLM cannot expose it.
-  # Use a scalar for identical replicas or a map keyed by engine ID.
-  # This is NOT the GPU's total memory or its nvidia-smi memory usage.
-  kv_cache_pool_gib_per_gpu: null
   sample_interval_seconds: 0.2
   save_resource_trace: true
 
@@ -38,11 +34,11 @@ generation_args:
     
 dataset_args:
   task_names:
-    REC8K
-  split: test
-  dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/REC-8K/
+    GRES
+  split: val
+  dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/GRES/
   resume_from_ckpt: 
-  save_path: results/VisHarness_REC8K_test
+  save_path: results/VisHarness_GRPO_GRES_val
   save_trajectory: False
   num_sample: null
   

@@ -114,7 +114,7 @@ def test_unknown_capacity_keeps_usage_but_not_fake_memory(monkeypatch):
     assert summary["peak_kv_cache_usage_percent"] == 20.0
     assert summary["peak_active_kv_cache_memory_per_gpu_gib"] is None
     assert summary["active_kv_metrics_complete"] is False
-    assert "benchmark.kv_cache_pool_gib_per_gpu" in summary["kv_cache_capacity_error"]
+    assert "start_vLLM_VisHarness.bash" in summary["kv_cache_capacity_error"]
 
 
 def test_capacity_can_be_resolved_after_startup(monkeypatch):
@@ -197,3 +197,48 @@ def test_hybrid_geometry_requires_an_explicit_pool(tmp_path):
             {"num_gpu_blocks": "100", "block_size": "16"},
             model_config_path=path, tensor_parallel_size=1, pipeline_parallel_size=1,
         )
+
+
+def test_startup_tokens_resolve_four_dp_capacities_automatically(monkeypatch, tmp_path):
+    # The model file can have FP32 weights even when the server runs BF16.
+    model = tmp_path / "config.json"
+    model.write_text(json.dumps({
+        "num_hidden_layers": 36, "num_key_value_heads": 8,
+        "num_attention_heads": 32, "head_dim": 128, "torch_dtype": "float32",
+    }))
+    startup = {
+        "model_config_path": str(model), "model_dtype": "bfloat16",
+        "tensor_parallel_size": 1, "pipeline_parallel_size": 1,
+        "server_process": {"pid": 123, "start_ticks": "test"},
+        "startup_log": "startup.log",
+        "engines": {str(i): {"capacity_tokens": 350464} for i in range(4)},
+    }
+    monkeypatch.setattr(benchmark, "load_startup_record", lambda *args, **kwargs: startup)
+    text = "".join(
+        _cache(str(i)) + f'vllm:kv_cache_usage_perc{{engine="{i}"}} {0.1 * (i + 1)}\n'
+        for i in range(4)
+    )
+    monitor, _ = _monitor(monkeypatch, text, model_config_path=model)
+    summary = monitor.stop()
+    assert summary["kv_cache_pool_gib_per_gpu"] == 48.12890625
+    assert summary["peak_active_kv_cache_memory_per_gpu_gib"] == pytest.approx(48.12890625 * 0.4)
+    assert summary["active_kv_metrics_complete"] is True
+    assert summary["kv_cache_capacity"]["calculation_method"] == "vllm_startup_tokens_and_model_kv_geometry"
+    assert summary["kv_cache_capacity"]["resolved_cache_dtype"] == "bfloat16"
+
+
+def test_startup_known_engines_require_complete_usage_samples(monkeypatch, tmp_path):
+    startup = {
+        "model_config_path": str(tmp_path / "unused"), "model_dtype": "bfloat16",
+        "tensor_parallel_size": 1, "pipeline_parallel_size": 1,
+        "server_process": {"pid": 123}, "startup_log": "startup.log",
+        "engines": {str(i): {"capacity_tokens": 16} for i in range(4)},
+    }
+    monkeypatch.setattr(benchmark, "load_startup_record", lambda *args, **kwargs: startup)
+    monitor, _ = _monitor(
+        monkeypatch, 'vllm:kv_cache_usage_perc{engine="0"} 0.5\n',
+        kv_cache_pool_gib_per_gpu=10,
+    )
+    summary = monitor.stop()
+    assert summary["active_kv_metrics_complete"] is False
+    assert summary["peak_active_kv_cache_memory_per_gpu_gib"] is None
