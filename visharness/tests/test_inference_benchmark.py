@@ -1,7 +1,14 @@
 """Resource accounting tests without GPU access or serving requests."""
 
+import argparse
 import json
+import os
+import shutil
+import subprocess
+import sys
+import time
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 
@@ -242,3 +249,223 @@ def test_startup_known_engines_require_complete_usage_samples(monkeypatch, tmp_p
     summary = monitor.stop()
     assert summary["active_kv_metrics_complete"] is False
     assert summary["peak_active_kv_cache_memory_per_gpu_gib"] is None
+
+
+@pytest.fixture
+def startup_log(monkeypatch, tmp_path):
+    identity = benchmark._process_identity(os.getpid())
+    path = tmp_path / "server.log"
+    options = argparse.Namespace(
+        model=str(tmp_path / "model"), host="0.0.0.0", port=8000,
+        served_model_name=["VisHarness"], tensor_parallel_size=1,
+        pipeline_parallel_size=1, data_parallel_size=4,
+        decode_context_parallel_size=1, prefill_context_parallel_size=1,
+    )
+    header = (
+        f'VISHARNESS_VLLM_STARTUP pid={identity["pid"]} '
+        f'start_ticks={identity["start_ticks"]} boot_id={identity["boot_id"]}\n'
+    )
+    body = "Initializing a V1 LLM engine with dtype=torch.bfloat16, kv_cache_dtype=auto\n"
+    body += "".join(
+        f'(EngineCore_DP{i} pid={identity["pid"]}) GPU KV cache size: 350,464 tokens\n'
+        for i in range(4)
+    )
+    path.write_text(header + body)
+    monkeypatch.setattr(benchmark, "_startup_log_paths", lambda _: [path])
+    monkeypatch.setattr(benchmark, "_serving_options", lambda _: options)
+    return path, options
+
+
+def _read_startup(options, **overrides):
+    kwargs = {
+        "metrics_url": "http://localhost:8000/metrics", "model_name": "VisHarness",
+        "model_config_path": options.model,
+    }
+    kwargs.update(overrides)
+    return benchmark.load_startup_record(**kwargs)
+
+
+def test_direct_cli_log_resolves_all_four_replicas(startup_log):
+    path, options = startup_log
+    record = _read_startup(options)
+    assert record["startup_log"] == str(path)
+    assert record["model_dtype"] == "bfloat16"
+    assert set(record["engines"]) == {"0", "1", "2", "3"}
+    assert record["engines"]["3"]["capacity_tokens"] == 350464
+    assert record["tensor_parallel_size"] == 1
+    assert _read_startup(options, model_config_path=Path(options.model) / "config.json")
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"model_name": "another-model"},
+    {"model_config_path": "/another/checkpoint"},
+    {"metrics_url": "http://localhost:8001/metrics"},
+    {"metrics_url": "http://remote-host:8000/metrics"},
+])
+def test_direct_cli_log_requires_matching_service(startup_log, kwargs):
+    _, options = startup_log
+    assert _read_startup(options, **kwargs) is None
+
+
+@pytest.mark.parametrize("corruption", ["start_ticks", "boot_id", "header", "partial", "dead_engine"])
+def test_old_or_incomplete_startup_log_is_not_used(startup_log, corruption):
+    path, options = startup_log
+    text = path.read_text()
+    if corruption == "start_ticks":
+        text = text.replace('start_ticks=', 'start_ticks=99')
+    elif corruption == "boot_id":
+        text = text.replace('boot_id=', 'boot_id=old-')
+    elif corruption == "header":
+        text = text.split("\n", 1)[1]
+    elif corruption == "partial":
+        text = "\n".join(text.splitlines()[:-1])
+    else:
+        text = text.replace(f"DP3 pid={os.getpid()}", "DP3 pid=999999999")
+    path.write_text(text)
+    assert _read_startup(options) is None
+
+
+def test_startup_log_rejects_unrelated_engine_processes(startup_log, monkeypatch):
+    _, options = startup_log
+    monkeypatch.setattr(benchmark, "_is_descendant", lambda *args: False)
+    assert _read_startup(options) is None
+
+
+def test_startup_dtype_ignores_unrelated_log_messages(startup_log):
+    path, options = startup_log
+    with path.open("a") as file:
+        file.write("request mentions dtype=float32, kv_cache_dtype=fp8\n")
+    assert _read_startup(options)["model_dtype"] == "bfloat16"
+
+
+@pytest.mark.parametrize("host", ["127.0.0.2", "192.0.2.1"])
+def test_startup_log_rejects_different_bind_address(startup_log, host):
+    _, options = startup_log
+    options.host = host
+    assert _read_startup(options) is None
+
+
+def test_single_engine_cli_log_is_supported(startup_log):
+    path, options = startup_log
+    options.data_parallel_size = 1
+    text = path.read_text().splitlines()
+    path.write_text("\n".join(text[:3]).replace("EngineCore_DP0", "EngineCore"))
+    assert set(_read_startup(options)["engines"]) == {"0"}
+
+
+def test_monitor_caches_log_but_rejects_reused_server_pid(startup_log, monkeypatch):
+    _, options = startup_log
+    loads = []
+    original = benchmark.load_startup_record
+
+    def read(*args, **kwargs):
+        loads.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(benchmark, "load_startup_record", read)
+    monitor, _ = _monitor(
+        monkeypatch, _cache("0") + 'vllm:kv_cache_usage_perc{engine="0"} 0.2\n',
+        model_config_path=options.model,
+    )
+    monitor.vllm_metrics_url = "http://localhost:8000/metrics"
+    monitor._sample()
+    assert monitor._startup_record is not None
+    monitor._sample()
+    assert len(loads) == 1
+    monkeypatch.setattr(benchmark, "_process_identity", lambda _: None)
+    assert monitor.stop()["peak_active_kv_cache_memory_per_gpu_gib"] is None
+    assert monitor._startup_record is None
+
+
+def test_startup_log_search_includes_serving_checkout(monkeypatch, tmp_path):
+    serving = tmp_path / "serving"
+    inference = tmp_path / "inference"
+    monkeypatch.setattr(benchmark, "__file__", str(inference / "visharness/trajectory_runner/benchmark.py"))
+    paths = benchmark._startup_log_paths(serving / "checkpoints/model")
+    assert paths[0] == inference / "outputs/vllm/server.log"
+    assert serving / "outputs/vllm/server.log" in paths
+
+
+def test_bash_launcher_executes_cli_directly_and_preserves_exit_status(tmp_path):
+    root = tmp_path / "checkout"
+    script = root / "recipe/visharness/scripts/trajectory_runner/start_vLLM_VisHarness.bash"
+    script.parent.mkdir(parents=True)
+    source = Path(__file__).resolve().parents[2] / script.relative_to(root)
+    shutil.copyfile(source, script)
+    executable = tmp_path / "vllm"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "print('FAKE_CLI=' + json.dumps({'pid': os.getpid(), 'args': sys.argv[1:], "
+        "'gpus': os.environ.get('CUDA_VISIBLE_DEVICES')}), flush=True)\n"
+        "sys.exit(7)\n"
+    )
+    executable.chmod(0o755)
+    result = subprocess.run(
+        ["bash", str(script)], capture_output=True, text=True, timeout=10,
+        env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}",
+             "MODEL": "checkpoints/model", "CONDA_PREFIX": str(tmp_path)},
+    )
+    assert result.returncode == 7, result.stderr
+    fake = json.loads(next(
+        line.removeprefix("FAKE_CLI=")
+        for line in result.stdout.splitlines() if line.startswith("FAKE_CLI=")
+    ))
+    log = (root / "outputs/vllm/server.log").read_text()
+    assert f'pid={fake["pid"]} ' in log.splitlines()[0]
+    assert fake["args"][:2] == ["serve", str(root / "checkpoints/model")]
+    assert fake["gpus"] == "0,1,2,3"
+    assert fake["args"][fake["args"].index("--data-parallel-size") + 1] == "4"
+    assert "FAKE_CLI=" in log
+
+
+def test_direct_cli_log_reader_works_with_real_process_without_gpu(tmp_path):
+    # A fake executable exercises the real Bash/PID/log-reader path, not vLLM.
+    root = tmp_path / "checkout"
+    script = root / "recipe/visharness/scripts/trajectory_runner/start_vLLM_VisHarness.bash"
+    script.parent.mkdir(parents=True)
+    source = Path(__file__).resolve().parents[2] / script.relative_to(root)
+    shutil.copyfile(source, script)
+    executable = tmp_path / "vllm"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import os, time\n"
+        "print('Initializing a V1 LLM engine dtype=torch.bfloat16, kv_cache_dtype=auto', flush=True)\n"
+        "for i in range(4):\n"
+        " print(f'(EngineCore_DP{i} pid={os.getpid()}) GPU KV cache size: 350,464 tokens', flush=True)\n"
+        "print('READY', flush=True)\n"
+        "while True: time.sleep(1)\n"
+    )
+    executable.chmod(0o755)
+    process = subprocess.Popen(
+        ["bash", str(script)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}",
+             "MODEL": str(root / "checkpoints/model"), "CONDA_PREFIX": str(tmp_path)},
+    )
+    try:
+        deadline = time.monotonic() + 5
+        record = None
+        while time.monotonic() < deadline:
+            record = benchmark.load_startup_record(
+                "http://localhost:8000/metrics", model_name="VisHarness",
+                model_config_path=root / "checkpoints/model",
+            )
+            if record is not None:
+                break
+            time.sleep(0.02)
+        assert record is not None
+        assert record["server_process"]["pid"] == process.pid  # Bash exec, no wrapper.
+        assert set(record["engines"]) == {"0", "1", "2", "3"}
+        process.terminate()
+        output, errors = process.communicate(timeout=5)
+        assert process.returncode == -15, errors
+        assert "READY" in output
+        assert benchmark._process_identity(process.pid) is None
+        assert benchmark.load_startup_record(
+            "http://localhost:8000/metrics", model_name="VisHarness",
+            model_config_path=root / "checkpoints/model",
+        ) is None
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=5)

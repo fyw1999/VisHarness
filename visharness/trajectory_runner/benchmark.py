@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+import argparse
+import ipaddress
 import json
 import logging
 import math
 import re
+import socket
 import threading
 import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
-from .vllm_launch import load_startup_record
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,148 @@ _DTYPE_BYTES = {
     "fp8_inc": 1,
     "fp8_ds_mla": 1,
 }
+
+
+def _process_identity(pid: int) -> dict[str, Any] | None:
+    """Identify a Linux process without confusing a reused PID for a server."""
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        if fields[0] == "Z":
+            return None
+        return {
+            "pid": pid, "start_ticks": fields[19],
+            "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+        }
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _is_descendant(pid: int, parent: int) -> bool:
+    visited: set[int] = set()
+    while pid > 1 and pid not in visited:
+        if pid == parent:
+            return True
+        visited.add(pid)
+        try:
+            fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+            pid = int(fields[1])
+        except (OSError, ValueError, IndexError):
+            return False
+    return False
+
+
+def _serving_options(pid: int) -> argparse.Namespace:
+    arguments = Path(f"/proc/{pid}/cmdline").read_text().rstrip("\0").split("\0")
+    arguments = arguments[arguments.index("serve") + 1:]
+    parser = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+    parser.add_argument("model")
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--served-model-name", nargs="+")
+    parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
+    parser.add_argument("--pipeline-parallel-size", "-pp", type=int, default=1)
+    parser.add_argument("--data-parallel-size", "-dp", type=int, default=1)
+    parser.add_argument("--decode-context-parallel-size", "-dcp", type=int, default=1)
+    parser.add_argument("--prefill-context-parallel-size", "-pcp", type=int, default=1)
+    options, _ = parser.parse_known_args(arguments)
+    return options
+
+
+def _startup_log_paths(model_config_path: Any) -> list[Path]:
+    roots = [Path(__file__).resolve().parents[2]]
+    if model_config_path:
+        # Also find the serving checkout when inference runs from the other repo.
+        roots.extend(Path(str(model_config_path)).expanduser().resolve().parents)
+    return list(dict.fromkeys(root / "outputs/vllm/server.log" for root in roots))
+
+
+def load_startup_record(
+    metrics_url: str | None, *, model_name: str | None, model_config_path: Any,
+) -> dict[str, Any] | None:
+    """Read the normal CLI's startup log, never launch or modify a vLLM engine."""
+    if not metrics_url:
+        return None
+    url = urlsplit(metrics_url)
+    host = url.hostname or ""
+    try:
+        local = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        local = host in {"localhost", socket.gethostname()}
+    if not local:
+        return None
+    port = url.port or (443 if url.scheme == "https" else 80)
+    for path in _startup_log_paths(model_config_path):
+        try:
+            with path.open(encoding="utf-8", errors="replace") as file:
+                header = re.fullmatch(
+                    r"VISHARNESS_VLLM_STARTUP pid=(\d+) start_ticks=(\d+) boot_id=([\w-]+)",
+                    file.readline().strip(),
+                )
+                if header is None:
+                    continue
+                identity = {
+                    "pid": int(header[1]), "start_ticks": header[2], "boot_id": header[3],
+                }
+                if _process_identity(identity["pid"]) != identity:
+                    continue
+                options = _serving_options(identity["pid"])
+                allowed_hosts = {"0.0.0.0", "::", "", host}
+                if host in {"localhost", "127.0.0.1", "::1"}:
+                    allowed_hosts.update({"localhost", "127.0.0.1", "::1"})
+                if options.port != port or options.host not in allowed_hosts:
+                    continue
+                model_path = Path(options.model).expanduser().resolve()
+                expected_path = (
+                    Path(str(model_config_path)).expanduser().resolve()
+                    if model_config_path else None
+                )
+                if expected_path and expected_path.name == "config.json":
+                    expected_path = expected_path.parent
+                if expected_path and expected_path != model_path:
+                    continue
+                if model_name and model_name not in (
+                    options.served_model_name or [options.model]
+                ):
+                    continue
+                if (
+                    options.decode_context_parallel_size != 1
+                    or options.prefill_context_parallel_size != 1
+                ):
+                    continue  # Startup token capacity includes context parallelism.
+                # Read a bounded startup prefix, not an ever-growing request log.
+                text = re.sub(
+                    r"\x1b\[[0-?]*[ -/]*[@-~]", "", file.read(2 * 1024**2)
+                )
+            dtype = None
+            engines: dict[str, Any] = {}
+            for line in text.splitlines():
+                if "Initializing a V1 LLM engine" in line:
+                    match = re.search(r"(?<!\w)dtype=(?:torch\.)?([\w]+)", line)
+                    if match:
+                        dtype = match[1]
+                engine = re.search(r"EngineCore(?:_DP(\d+))?\s+pid=(\d+)", line)
+                tokens = re.search(r"GPU KV cache size:\s*([\d,]+)\s+tokens", line)
+                if engine and tokens:
+                    pid = int(engine[2])
+                    process = _process_identity(pid)
+                    capacity = int(tokens[1].replace(",", ""))
+                    if process and capacity > 0 and _is_descendant(pid, identity["pid"]):
+                        engines[engine[1] or "0"] = {
+                            "capacity_tokens": capacity, "process": process,
+                        }
+            if dtype and set(engines) == {str(i) for i in range(options.data_parallel_size)}:
+                return {
+                    "model_config_path": str(model_path), "model_dtype": dtype,
+                    "tensor_parallel_size": options.tensor_parallel_size,
+                    "pipeline_parallel_size": options.pipeline_parallel_size,
+                    "server_process": identity, "startup_log": str(path), "engines": engines,
+                }
+        except (
+            OSError, ValueError, TypeError, KeyError, IndexError,
+            argparse.ArgumentError, SystemExit,
+        ):
+            continue
+    return None
 
 
 def _utc_now() -> str:
@@ -242,7 +386,7 @@ def _calculate_kv_cache_capacity(
         except (TypeError, ValueError) as exc:
             raise ValueError(
                 "KV capacity is absent from /metrics and no matching live "
-                "startup record is available. Deploy with "
+                "startup log is available. Deploy with "
                 "start_vLLM_VisHarness.bash to record it automatically. "
                 "KV usage remains available."
             ) from exc
@@ -420,6 +564,7 @@ class InferenceResourceMonitor:
         self._capacity_errors: dict[str, str] = {}
         self._peak_kv_usage_by_engine: dict[str, float] = {}
         self._startup_engines: set[str] = set()
+        self._startup_record: dict[str, Any] | None = None
         self._kv_cache_capacity: dict[str, Any] | None = None
         self._kv_cache_capacity_error: str | None = None
         self._peak_requests_running: float | None = None
@@ -515,10 +660,23 @@ class InferenceResourceMonitor:
             engine = engine_id(labels)
             usage_by_engine[engine] = max(usage_by_engine.get(engine, 0.0), value)
 
-        startup = load_startup_record(
-            self.vllm_metrics_url, model_name=self.model_name,
-            model_config_path=self.model_config_path,
-        )
+        # Cache the successfully validated startup prefix; do not rescan the log
+        # at every resource sample. Still reject stopped/replaced processes.
+        startup = self._startup_record
+        if startup and any(
+            _process_identity(identity["pid"]) != identity
+            for identity in [
+                startup["server_process"],
+                *(engine["process"] for engine in startup["engines"].values()),
+            ]
+        ):
+            startup = None
+        if startup is None:
+            startup = load_startup_record(
+                self.vllm_metrics_url, model_name=self.model_name,
+                model_config_path=self.model_config_path,
+            )
+        self._startup_record = startup
         self._startup_engines = set(startup["engines"]) if startup else set()
         engines = (
             set(self._cache_config_by_engine) | set(usage_by_engine)

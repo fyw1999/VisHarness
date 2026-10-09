@@ -428,11 +428,12 @@ enables GPU memory and vLLM resource monitoring and defaults to `false`.
 When enabling it, set `gpu_indices` to the serving GPUs and
 `tensor_parallel_size` to the server's TP size (not its number of replicas).
 Peak active KV memory is calculated separately for each replica before taking
-the maximum. The deployment script automatically saves startup information
-under `outputs/vllm/` and registers each replica's capacity locally. The runner
-uses this record when `/metrics` omits the capacity, checking that the serving
-process, model, and port still match. No capacity setting is needed in YAML.
-Records from stopped/replaced services are ignored. This automatic fallback
+the maximum. The deployment script runs `vllm serve` directly and saves its
+output to `outputs/vllm/server.log`. When `/metrics` omits the capacity, the
+runner reads and caches the startup capacity of each replica from this log,
+using the actual serving dtype rather than the checkpoint's weight dtype.
+The serving process, model, and port must match; old logs are ignored. No
+Python launcher or capacity setting in YAML is needed. This automatic fallback
 requires the local service to be started with the provided deployment script;
 unavailable or unsupported capacity is reported as `N/A`, never guessed from
 total GPU memory. Use an otherwise idle serving service for comparisons:
