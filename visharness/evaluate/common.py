@@ -647,6 +647,7 @@ def _distribution(
     return {
         "sample_count": len(values),
         "missing_count": max(expected_count - len(values), 0),
+        "coverage": len(values) / expected_count if expected_count else None,
         "mean": float(np.mean(values)) if values else None,
         "p50": _percentile(values, 0.50),
         "p95": _percentile(values, 0.95),
@@ -775,6 +776,7 @@ def summarize_efficiency_metrics(
     peak_kv_cache_usage: list[float] = []
     kv_cache_pool_gib_per_gpu: list[float] = []
     peak_active_kv_cache_memory_gib: list[float] = []
+    active_kv_peaks: list[tuple[float, float | None]] = []
     for summary_path, summary in benchmark_summaries:
         processed = _finite_float(summary.get("processed_trajectories"))
         rollout_wall = _finite_float(summary.get("rollout_wall_seconds"))
@@ -815,12 +817,33 @@ def summarize_efficiency_metrics(
                 "peak_active_kv_cache_memory_per_gpu_gib"
             )
         )
+        active_kv_usage_percent = _finite_float(
+            resource_metrics.get("peak_active_kv_cache_usage_percent")
+        )
         if (
             peak_active_kv is None
             and peak_kv is not None
             and kv_pool is not None
+            # New summaries explicitly flag incomplete replica coverage.
+            # Keep the scalar fallback only for legacy summaries, or a
+            # user-supplied capacity shared by all replicas.
+            and (
+                "active_kv_metrics_complete" not in resource_metrics
+                or (
+                    pool_override is not None
+                    and kv_pool == pool_override
+                    and resource_metrics.get("peak_kv_cache_usage_by_engine")
+                    and set(resource_metrics.get("vllm_cache_config_by_engine", {}))
+                    <= set(resource_metrics["peak_kv_cache_usage_by_engine"])
+                )
+            )
         ):
             peak_active_kv = peak_kv * kv_pool
+            active_kv_usage_percent = peak_kv * 100.0
+        if "peak_active_kv_cache_usage_percent" not in resource_metrics:
+            active_kv_usage_percent = (
+                peak_kv * 100.0 if peak_kv is not None else None
+            )
         if idle_gpu is not None:
             idle_gpu_memory_gib.append(idle_gpu)
         if peak_gpu is not None:
@@ -835,6 +858,7 @@ def summarize_efficiency_metrics(
             kv_cache_pool_gib_per_gpu.append(kv_pool)
         if peak_active_kv is not None:
             peak_active_kv_cache_memory_gib.append(peak_active_kv)
+            active_kv_peaks.append((peak_active_kv, active_kv_usage_percent))
         run_records.append(
             {
                 "path": str(summary_path),
@@ -872,6 +896,7 @@ def summarize_efficiency_metrics(
                 "peak_active_kv_cache_memory_per_gpu_gib": (
                     peak_active_kv
                 ),
+                "peak_active_kv_cache_usage_percent": active_kv_usage_percent,
             }
         )
 
@@ -983,7 +1008,13 @@ def summarize_efficiency_metrics(
                 else None
             ),
             "mixed_kv_cache_pool_capacities": (
-                len(
+                any(
+                    summary["resource_metrics"].get(
+                        "mixed_kv_cache_pool_capacities", False
+                    )
+                    for _, summary in benchmark_summaries
+                    if isinstance(summary.get("resource_metrics"), dict)
+                ) or len(
                     {
                         round(value, 9)
                         for value in kv_cache_pool_gib_per_gpu
@@ -995,6 +1026,10 @@ def summarize_efficiency_metrics(
                 max(peak_active_kv_cache_memory_gib)
                 if peak_active_kv_cache_memory_gib
                 else None
+            ),
+            "peak_active_kv_cache_usage_percent": (
+                max(active_kv_peaks, key=lambda peak: peak[0])[1]
+                if active_kv_peaks else None
             ),
             "runs": run_records,
         },

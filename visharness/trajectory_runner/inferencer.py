@@ -486,6 +486,16 @@ class BaseTrajectoryInferencer:
                 model_started = time.perf_counter()
                 try:
                     response = self.tp_model.generate_one_item(item)
+                except Exception:
+                    # No response means this logical request's token usage is
+                    # unknown, even if earlier turns returned valid counts.
+                    for missing_key in (
+                        "prompt_token_metrics_missing_calls",
+                        "visual_token_metrics_missing_calls",
+                        "completion_token_metrics_missing_calls",
+                    ):
+                        efficiency_metrics[missing_key] += 1
+                    raise
                 finally:
                     model_latency = time.perf_counter() - model_started
                     efficiency_metrics["llm_generate_seconds"] += model_latency

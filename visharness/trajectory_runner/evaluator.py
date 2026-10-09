@@ -30,6 +30,7 @@ class TrajectoryEvaluator:
         self.model = OnlineVllmModelClient(mode, **model_args)
         self.model.set_generation_config(config.get("generation_args", {}))
         benchmark_config = as_plain_dict(config.get("benchmark", {}))
+        benchmark_config.setdefault("model_name", model_args.get("model_name"))
         if not benchmark_config.get("model_config_path"):
             benchmark_config["model_config_path"] = (
                 model_args.get("tokenizer_path")

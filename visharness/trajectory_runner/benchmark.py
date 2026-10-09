@@ -71,25 +71,47 @@ def _normalize_gpu_indices(value: Any) -> list[int]:
     return indices
 
 
-def _parse_prometheus_metrics(text: str) -> dict[str, list[float]]:
-    values: dict[str, list[float]] = {
-        metric_name: [] for metric_name in _VLLM_METRICS
+def _parse_prometheus_samples(
+    text: str,
+) -> dict[str, list[tuple[dict[str, str], float]]]:
+    """Keep engine labels so DP replicas are not mistaken for one KV pool."""
+
+    values: dict[str, list[tuple[dict[str, str], float]]] = {
+        name: [] for name in _VLLM_METRICS | {_VLLM_CACHE_CONFIG_METRIC}
     }
     for raw_line in text.splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("#") or " " not in line:
+        if not line or line.startswith("#"):
             continue
-        metric_with_labels, raw_value = line.rsplit(None, 1)
-        metric_name = metric_with_labels.split("{", 1)[0]
+        match = re.fullmatch(
+            r'([^\s{]+)(?:\{(.*)\})?\s+(\S+)(?:\s+\S+)?', line
+        )
+        if match is None:
+            continue
+        metric_name, raw_labels, raw_value = match.groups()
         if metric_name not in values:
             continue
         try:
             value = float(raw_value)
         except ValueError:
             continue
-        if math.isfinite(value):
-            values[metric_name].append(value)
+        if not math.isfinite(value):
+            continue
+        labels: dict[str, str] = {}
+        for label_match in _PROMETHEUS_LABEL_PATTERN.finditer(raw_labels or ""):
+            key, raw_label_value = label_match.groups()
+            try:
+                label_value = json.loads(f'"{raw_label_value}"')
+            except json.JSONDecodeError:
+                label_value = raw_label_value
+            labels[key] = str(label_value)
+        values[metric_name].append((labels, value))
     return values
+
+
+def _parse_prometheus_metrics(text: str) -> dict[str, list[float]]:
+    samples = _parse_prometheus_samples(text)
+    return {name: [value for _, value in samples[name]] for name in _VLLM_METRICS}
 
 
 def _parse_prometheus_metric_labels(
@@ -98,25 +120,8 @@ def _parse_prometheus_metric_labels(
 ) -> dict[str, str]:
     """Return labels from the first sample of a Prometheus info metric."""
 
-    prefix = f"{metric_name}{{"
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line.startswith(prefix):
-            continue
-        closing_brace = line.rfind("}")
-        if closing_brace < len(prefix):
-            continue
-        raw_labels = line[len(prefix) : closing_brace]
-        labels: dict[str, str] = {}
-        for match in _PROMETHEUS_LABEL_PATTERN.finditer(raw_labels):
-            key, raw_value = match.groups()
-            try:
-                value = json.loads(f'"{raw_value}"')
-            except json.JSONDecodeError:
-                value = raw_value
-            labels[key] = str(value)
-        return labels
-    return {}
+    samples = _parse_prometheus_samples(text).get(metric_name, [])
+    return samples[0][0] if samples else {}
 
 
 def _positive_int(value: Any, name: str) -> int:
@@ -180,16 +185,8 @@ def _calculate_kv_cache_capacity(
 ) -> dict[str, Any]:
     """Calculate the physical KV-cache pool capacity allocated per GPU."""
 
-    num_gpu_blocks = _positive_int(
-        cache_config.get("num_gpu_blocks"),
-        "vLLM num_gpu_blocks",
-    )
-    block_size = _positive_int(
-        cache_config.get("block_size"),
-        "vLLM block_size",
-    )
-    capacity_tokens = num_gpu_blocks * block_size
-
+    # Newer vLLM versions expose num_gpu_blocks="None". An explicit
+    # capacity must still work without these optional block metadata.
     if pool_gib_override is not None:
         pool_gib = _positive_float(
             pool_gib_override,
@@ -199,9 +196,6 @@ def _calculate_kv_cache_capacity(
         return {
             "available": True,
             "calculation_method": "configured_pool_gib_override",
-            "num_gpu_blocks": num_gpu_blocks,
-            "block_size_tokens": block_size,
-            "capacity_tokens": capacity_tokens,
             "pool_bytes_per_gpu": pool_bytes,
             "pool_gib_per_gpu": pool_bytes / 1024**3,
         }
@@ -215,12 +209,24 @@ def _calculate_kv_cache_capacity(
         return {
             "available": True,
             "calculation_method": "vllm_kv_cache_memory_bytes",
-            "num_gpu_blocks": num_gpu_blocks,
-            "block_size_tokens": block_size,
-            "capacity_tokens": capacity_tokens,
             "pool_bytes_per_gpu": pool_bytes,
             "pool_gib_per_gpu": pool_bytes / 1024**3,
         }
+
+    try:
+        num_gpu_blocks = _positive_int(
+            cache_config.get("num_gpu_blocks"), "vLLM num_gpu_blocks"
+        )
+        block_size = _positive_int(
+            cache_config.get("block_size"), "vLLM block_size"
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "vLLM does not expose usable KV-cache capacity; set "
+            "benchmark.kv_cache_pool_gib_per_gpu to the actual KV pool "
+            "capacity per GPU (not total GPU memory). Usage remains available."
+        ) from exc
+    capacity_tokens = num_gpu_blocks * block_size
 
     config_path = _model_config_file(model_config_path)
     with config_path.open("r", encoding="utf-8") as file:
@@ -233,6 +239,19 @@ def _calculate_kv_cache_capacity(
         if isinstance(raw_text_config, dict)
         else model_config
     )
+    if (
+        text_config.get("kv_lora_rank") is not None
+        or text_config.get("use_mla")
+        or text_config.get("use_sliding_window")
+        or any(
+            layer_type != "full_attention"
+            for layer_type in (text_config.get("layer_types") or [])
+        )
+    ):
+        raise ValueError(
+            "Automatic KV capacity requires full-attention KV geometry; "
+            "set benchmark.kv_cache_pool_gib_per_gpu for hybrid/MLA models"
+        )
 
     total_layers = _positive_int(
         text_config.get("num_hidden_layers"),
@@ -268,6 +287,11 @@ def _calculate_kv_cache_capacity(
         pipeline_parallel_size,
         "benchmark.pipeline_parallel_size",
     )
+    if (
+        total_kv_heads % tensor_parallel_size
+        and tensor_parallel_size % total_kv_heads
+    ):
+        raise ValueError("KV heads and tensor parallel size are incompatible")
     kv_heads_per_gpu = max(1, total_kv_heads // tensor_parallel_size)
     layers_per_gpu = math.ceil(total_layers / pipeline_parallel_size)
     resolved_dtype, dtype_bytes = _resolve_cache_dtype(
@@ -335,13 +359,14 @@ class InferenceResourceMonitor:
         self.trace_enabled = bool(config.get("save_resource_trace", True))
         self.trace_path = trace_path if self.trace_enabled else None
         self.run_id = run_id
+        self.model_name = config.get("model_name")
         self.model_config_path = config.get("model_config_path")
         configured_tp = config.get("tensor_parallel_size")
         self.tensor_parallel_size = _positive_int(
             (
                 configured_tp
                 if configured_tp is not None
-                else max(len(self.gpu_indices), 1)
+                else 1
             ),
             "benchmark.tensor_parallel_size",
         )
@@ -365,10 +390,15 @@ class InferenceResourceMonitor:
         self._peak_gpu_memory_mib: dict[str, float] = {}
         self._peak_kv_cache_usage: float | None = None
         self._vllm_cache_config: dict[str, str] = {}
+        self._cache_config_by_engine: dict[str, dict[str, str]] = {}
+        self._capacity_by_engine: dict[str, dict[str, Any]] = {}
+        self._capacity_signatures: dict[str, str] = {}
+        self._capacity_errors: dict[str, str] = {}
+        self._peak_kv_usage_by_engine: dict[str, float] = {}
         self._kv_cache_capacity: dict[str, Any] | None = None
         self._kv_cache_capacity_error: str | None = None
-        self._peak_requests_running = 0.0
-        self._peak_requests_waiting = 0.0
+        self._peak_requests_running: float | None = None
+        self._peak_requests_waiting: float | None = None
         self._counter_start: dict[str, float] = {}
         self._counter_end: dict[str, float] = {}
         self._errors: list[str] = []
@@ -424,7 +454,7 @@ class InferenceResourceMonitor:
                 self._record_error(f"GPU {index} sampling failed", exc)
         return result
 
-    def _sample_vllm_metrics(self) -> dict[str, float]:
+    def _sample_vllm_metrics(self) -> dict[str, Any]:
         if not self.vllm_metrics_url:
             return {}
         try:
@@ -437,34 +467,84 @@ class InferenceResourceMonitor:
             self._record_error("vLLM metrics sampling failed", exc)
             return {}
 
-        cache_config = _parse_prometheus_metric_labels(
-            text,
-            _VLLM_CACHE_CONFIG_METRIC,
-        )
-        if cache_config and not self._vllm_cache_config:
-            self._vllm_cache_config = cache_config
+        parsed = {
+            name: [
+                (labels, value)
+                for labels, value in samples
+                if (
+                    not self.model_name
+                    or "model_name" not in labels
+                    or labels["model_name"] == self.model_name
+                )
+            ]
+            for name, samples in _parse_prometheus_samples(text).items()
+        }
+
+        def engine_id(labels: dict[str, str]) -> str:
+            return labels.get("engine", labels.get("engine_id", "0"))
+
+        for labels, _ in parsed[_VLLM_CACHE_CONFIG_METRIC]:
+            self._cache_config_by_engine[engine_id(labels)] = labels
+        usage_by_engine: dict[str, float] = {}
+        for labels, value in parsed["vllm:kv_cache_usage_perc"]:
+            engine = engine_id(labels)
+            usage_by_engine[engine] = max(usage_by_engine.get(engine, 0.0), value)
+
+        engines = set(self._cache_config_by_engine) | set(usage_by_engine)
+        for engine in engines:
+            cache_config = self._cache_config_by_engine.get(engine, {})
+            override = self.kv_cache_pool_gib_per_gpu_override
+            if isinstance(override, dict):
+                override = override.get(
+                    engine,
+                    override.get(int(engine)) if engine.isdigit() else None,
+                )
+            signature = json.dumps([cache_config, override], sort_keys=True)
+            if self._capacity_signatures.get(engine) == signature:
+                continue
+            self._capacity_signatures[engine] = signature
             try:
-                self._kv_cache_capacity = _calculate_kv_cache_capacity(
+                self._capacity_by_engine[engine] = _calculate_kv_cache_capacity(
                     cache_config,
                     model_config_path=self.model_config_path,
                     tensor_parallel_size=self.tensor_parallel_size,
                     pipeline_parallel_size=self.pipeline_parallel_size,
-                    pool_gib_override=(
-                        self.kv_cache_pool_gib_per_gpu_override
-                    ),
+                    pool_gib_override=override,
                 )
+                self._capacity_errors.pop(engine, None)
             except Exception as exc:
-                self._kv_cache_capacity_error = (
-                    f"{type(exc).__name__}: {exc}"
-                )
+                self._capacity_by_engine.pop(engine, None)
+                self._capacity_errors[engine] = f"{type(exc).__name__}: {exc}"
                 self._record_error(
-                    "KV-cache capacity calculation failed",
+                    f"KV-cache capacity calculation failed for engine {engine}",
                     exc,
                 )
 
-        parsed = _parse_prometheus_metrics(text)
-        result: dict[str, float] = {}
-        for metric_name, metric_values in parsed.items():
+        self._vllm_cache_config = next(
+            iter(self._cache_config_by_engine.values()), {}
+        )
+        capacities = list(self._capacity_by_engine.values())
+        self._kv_cache_capacity = (
+            capacities[0]
+            if (
+                capacities and not self._capacity_errors and all(
+                    capacity["pool_bytes_per_gpu"] == capacities[0]["pool_bytes_per_gpu"]
+                    for capacity in capacities
+                )
+            )
+            else None
+        )
+        self._kv_cache_capacity_error = (
+            "; ".join(
+                f"engine {key}: {value}"
+                for key, value in sorted(self._capacity_errors.items())
+            )
+            or None
+        )
+
+        result: dict[str, Any] = {}
+        for metric_name in _VLLM_METRICS:
+            metric_values = [value for _, value in parsed[metric_name]]
             if not metric_values:
                 continue
             short_name = metric_name.removeprefix("vllm:")
@@ -472,6 +552,8 @@ class InferenceResourceMonitor:
                 result[short_name] = max(metric_values)
             else:
                 result[short_name] = sum(metric_values)
+        if usage_by_engine:
+            result["kv_cache_usage_perc_by_engine"] = usage_by_engine
         return result
 
     def _write_trace(self, sample: dict[str, Any]) -> None:
@@ -510,6 +592,7 @@ class InferenceResourceMonitor:
         if not self._baseline_gpu_memory_mib and gpu_memory_mib:
             self._baseline_gpu_memory_mib = dict(gpu_memory_mib)
         for index, value in gpu_memory_mib.items():
+            self._baseline_gpu_memory_mib.setdefault(index, value)
             self._peak_gpu_memory_mib[index] = max(
                 value,
                 self._peak_gpu_memory_mib.get(index, value),
@@ -521,14 +604,19 @@ class InferenceResourceMonitor:
                 self._peak_kv_cache_usage or 0.0,
                 float(current_kv_usage),
             )
-        self._peak_requests_running = max(
-            self._peak_requests_running,
-            float(vllm_metrics.get("num_requests_running", 0.0)),
-        )
-        self._peak_requests_waiting = max(
-            self._peak_requests_waiting,
-            float(vllm_metrics.get("num_requests_waiting", 0.0)),
-        )
+        for engine, usage in vllm_metrics.get(
+            "kv_cache_usage_perc_by_engine", {}
+        ).items():
+            self._peak_kv_usage_by_engine[engine] = max(
+                self._peak_kv_usage_by_engine.get(engine, 0.0), usage
+            )
+        for name, attribute in (
+            ("num_requests_running", "_peak_requests_running"),
+            ("num_requests_waiting", "_peak_requests_waiting"),
+        ):
+            if name in vllm_metrics:
+                previous = getattr(self, attribute)
+                setattr(self, attribute, max(previous or 0.0, vllm_metrics[name]))
         counter_values = {
             name: float(vllm_metrics[name])
             for name in (
@@ -538,10 +626,9 @@ class InferenceResourceMonitor:
             )
             if name in vllm_metrics
         }
-        if not self._counter_start and counter_values:
-            self._counter_start = dict(counter_values)
-        if counter_values:
-            self._counter_end = dict(counter_values)
+        for name, value in counter_values.items():
+            self._counter_start.setdefault(name, value)
+            self._counter_end[name] = value
 
         self._write_trace(sample)
         return sample
@@ -629,13 +716,26 @@ class InferenceResourceMonitor:
             if self._kv_cache_capacity is not None
             else None
         )
+        known_engines = (
+            set(self._cache_config_by_engine) | set(self._peak_kv_usage_by_engine)
+        )
+        active_kv_complete = bool(known_engines) and all(
+            engine in self._capacity_by_engine
+            and engine in self._peak_kv_usage_by_engine
+            for engine in known_engines
+        )
+        active_kv_by_engine = {
+            engine: capacity["pool_gib_per_gpu"] * self._peak_kv_usage_by_engine[engine]
+            for engine, capacity in self._capacity_by_engine.items()
+            if engine in self._peak_kv_usage_by_engine
+        }
+        peak_active_engine = (
+            max(active_kv_by_engine, key=active_kv_by_engine.get)
+            if active_kv_complete else None
+        )
         peak_active_kv_cache_gib = (
-            float(kv_cache_pool_gib) * self._peak_kv_cache_usage
-            if (
-                kv_cache_pool_gib is not None
-                and self._peak_kv_cache_usage is not None
-            )
-            else None
+            active_kv_by_engine[peak_active_engine]
+            if peak_active_engine is not None else None
         )
         return {
             "enabled": True,
@@ -668,7 +768,15 @@ class InferenceResourceMonitor:
             ),
             "vllm_metrics_url": self.vllm_metrics_url,
             "vllm_cache_config": self._vllm_cache_config,
+            "vllm_cache_config_by_engine": self._cache_config_by_engine,
             "kv_cache_capacity": self._kv_cache_capacity,
+            "kv_cache_capacity_by_engine": self._capacity_by_engine,
+            "mixed_kv_cache_pool_capacities": (
+                len({
+                    capacity["pool_bytes_per_gpu"]
+                    for capacity in self._capacity_by_engine.values()
+                }) > 1
+            ),
             "kv_cache_capacity_error": self._kv_cache_capacity_error,
             "kv_cache_pool_gib_per_gpu": kv_cache_pool_gib,
             "peak_kv_cache_usage": self._peak_kv_cache_usage,
@@ -680,6 +788,13 @@ class InferenceResourceMonitor:
             "peak_active_kv_cache_memory_per_gpu_gib": (
                 peak_active_kv_cache_gib
             ),
+            "active_kv_metrics_complete": active_kv_complete,
+            "peak_active_kv_engine": peak_active_engine,
+            "peak_active_kv_cache_usage_percent": (
+                self._peak_kv_usage_by_engine[peak_active_engine] * 100.0
+                if peak_active_engine is not None else None
+            ),
+            "peak_kv_cache_usage_by_engine": self._peak_kv_usage_by_engine,
             "peak_requests_running": self._peak_requests_running,
             "peak_requests_waiting": self._peak_requests_waiting,
             "vllm_counter_start": self._counter_start,

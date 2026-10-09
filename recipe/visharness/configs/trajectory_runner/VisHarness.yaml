@@ -1,7 +1,7 @@
 mode: inference
 model_args: 
   model_name: VisHarness
-  tokenizer_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisHarness-public/checkpoints/VisHarness/VisHarness-grpo-sft105-p8-filterstd02-trajeq-valsample-v1/archived/global_step_550
+  tokenizer_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisHarness-public/checkpoints/sft/Qwen3-VL-8B-Thinking/v0-20260928-211731/checkpoint-105
   base_url: http://localhost:8000/v1
   api_key: EMPTY
 
@@ -11,10 +11,16 @@ max_rounds: 12
 archive_previous_images: true
 
 benchmark:
+  # Only GPU/vLLM resource monitoring is optional. Time/token statistics
+  # are always recorded, including when enabled is false.
   enabled: false
-  gpu_indices: [0, 1]
+  gpu_indices: [0, 1, 2, 3]
   # Must match the vLLM server's -tp/--tensor-parallel-size value.
-  tensor_parallel_size: 2
+  tensor_parallel_size: 1
+  # Optional actual KV pool capacity in GiB/GPU if vLLM cannot expose it.
+  # Use a scalar for identical replicas or a map keyed by engine ID.
+  # This is NOT the GPU's total memory or its nvidia-smi memory usage.
+  kv_cache_pool_gib_per_gpu: null
   sample_interval_seconds: 0.2
   save_resource_trace: true
 

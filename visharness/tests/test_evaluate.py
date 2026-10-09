@@ -470,6 +470,84 @@ def test_efficiency_summary_combines_trajectory_and_run_metrics(
     )
 
 
+def test_efficiency_summary_exposes_missing_token_coverage(tmp_path):
+    path = tmp_path / "run_ckpt.jsonl"
+    _write_jsonl(path, [
+        _prediction("a", efficiency_metrics={"cumulative_visual_tokens": 40}),
+        _prediction("b", termination_reason="failed", efficiency_metrics={
+            "cumulative_visual_tokens": None,
+        }),
+    ])
+    predictions, _ = load_compact_predictions(path)
+    summary = summarize_efficiency_metrics(["a", "b"], predictions, path)
+    counts = summary["per_trajectory"]["distributions"]["cumulative_visual_tokens"]
+    assert counts["mean"] == 40.0
+    assert counts["sample_count"] == 1
+    assert counts["missing_count"] == 1
+    assert counts["coverage"] == 0.5
+
+
+@pytest.mark.parametrize("incomplete", [False, True])
+def test_efficiency_summary_keeps_active_memory_and_usage_paired(tmp_path, incomplete):
+    path = tmp_path / "run_ckpt.jsonl"
+    _write_jsonl(path, [_prediction("a")])
+    _write_json(tmp_path / "benchmark_run.json", {
+        "resource_metrics": {
+            "peak_active_kv_cache_memory_per_gpu_gib": None if incomplete else 4.0,
+            "peak_active_kv_cache_usage_percent": None if incomplete else 50.0,
+            "peak_kv_cache_usage": 0.9,
+            "kv_cache_pool_gib_per_gpu": 10.0,
+            "active_kv_metrics_complete": not incomplete,
+            "mixed_kv_cache_pool_capacities": True,
+        },
+    })
+    predictions, _ = load_compact_predictions(path)
+    run = summarize_efficiency_metrics(["a"], predictions, path)["run_level"]
+    assert run["peak_active_kv_cache_memory_per_gpu_gib"] == (None if incomplete else 4.0)
+    assert run["peak_active_kv_cache_usage_percent"] == (None if incomplete else 50.0)
+    assert run["peak_kv_cache_usage_percent"] == 90.0
+    assert run["mixed_kv_cache_pool_capacities"] is True
+
+
+@pytest.mark.parametrize("printer", [
+    print_rec8k_summary_table, print_gres_summary_table, print_reasonseg_summary_table,
+])
+def test_tables_use_usage_of_the_engine_with_peak_active_memory(printer, capsys):
+    printer({"efficiency": {"run_level": {
+        "peak_active_kv_cache_memory_per_gpu_gib": 4.0,
+        "peak_active_kv_cache_usage_percent": 50.0,
+        "peak_kv_cache_usage_percent": 90.0,
+    }}})
+    output = capsys.readouterr().out
+    assert "4.00 GiB/GPU (50.00%)" in output
+    assert "90.00%" not in output
+
+
+@pytest.mark.parametrize("missing_replica", [False, True])
+def test_manual_evaluation_capacity_requires_replica_usage_coverage(tmp_path, missing_replica):
+    path = tmp_path / "run_ckpt.jsonl"
+    _write_jsonl(path, [_prediction("a")])
+    cache_configs = {"0": {}}
+    if missing_replica:
+        cache_configs["1"] = {}
+    _write_json(tmp_path / "benchmark_run.json", {
+        "resource_metrics": {
+            "active_kv_metrics_complete": False,
+            "peak_kv_cache_usage": 0.2,
+            "peak_kv_cache_usage_by_engine": {"0": 0.2},
+            "vllm_cache_config_by_engine": cache_configs,
+            "peak_active_kv_cache_usage_percent": None,
+        },
+    })
+    predictions, _ = load_compact_predictions(path)
+    run = summarize_efficiency_metrics(
+        ["a"], predictions, path, kv_cache_pool_gib_per_gpu_override=10,
+    )["run_level"]
+    assert run["peak_active_kv_cache_memory_per_gpu_gib"] == (
+        None if missing_replica else 2.0
+    )
+
+
 def test_print_rec8k_summary_table(capsys: pytest.CaptureFixture[str]) -> None:
     print_rec8k_summary_table(
         {

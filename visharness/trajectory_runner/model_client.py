@@ -346,6 +346,8 @@ class OnlineVllmModelClient:
                     "Inference mode requires prefer_token_completion=True so output parsing matches training rollout."
                 )
             self._get_tokenizer()
+            # Resolve this once before trajectory threads share the client.
+            self._resolve_image_token_id()
         elif self.mode == "data_generation":
             if self.prefer_token_completion:
                 raise ValueError(
@@ -438,19 +440,32 @@ class OnlineVllmModelClient:
 
         if getattr(self, "_image_token_id_resolved", False):
             return getattr(self, "_image_token_id", None)
-        self._image_token_id_resolved = True
         tokenizer = self._get_tokenizer()
         if tokenizer is None:
+            self._image_token_id_resolved = True
             return None
-        token_id = tokenizer.convert_tokens_to_ids("<|image_pad|>")
-        if not isinstance(token_id, int) or token_id < 0:
+        try:
+            token_id = tokenizer.convert_tokens_to_ids("<|image_pad|>")
+        except Exception as exc:
+            logger.warning("Visual token ID is unavailable: %s", exc)
+            self._image_token_id_resolved = True
+            return None
+        if (
+            isinstance(token_id, bool)
+            or not isinstance(token_id, int)
+            or token_id < 0
+        ):
+            self._image_token_id_resolved = True
             return None
         try:
             if tokenizer.convert_ids_to_tokens(token_id) != "<|image_pad|>":
+                self._image_token_id_resolved = True
                 return None
         except Exception:
             pass
         self._image_token_id = token_id
+        # Publish completion only after the cached value is available.
+        self._image_token_id_resolved = True
         return token_id
 
     def _count_visual_tokens(

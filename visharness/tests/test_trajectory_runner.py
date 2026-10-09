@@ -1,5 +1,7 @@
 import base64
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -2318,6 +2320,97 @@ def test_online_client_counts_qwen_visual_prompt_tokens():
     assert response.prompt_token_count == 7
     assert response.visual_token_count == 3
     assert response.completion_token_count == 2
+
+
+def test_visual_token_id_is_resolved_before_trajectory_threads_start():
+    client = OnlineVllmModelClient(
+        "inference", model_name="VisHarness", tokenizer=FakeTokenizer("unused")
+    )
+    try:
+        assert client._image_token_id_resolved is True
+        assert client._image_token_id == 151655
+    finally:
+        client.client.close()
+
+
+def test_concurrent_visual_token_resolution_never_publishes_partial_cache():
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingTokenizer(FakeTokenizer):
+        def convert_tokens_to_ids(self, token):
+            if not started.is_set():
+                started.set()
+                assert release.wait(timeout=5)
+            return super().convert_tokens_to_ids(token)
+
+    client = OnlineVllmModelClient.__new__(OnlineVllmModelClient)
+    client.tokenizer = BlockingTokenizer("unused")
+    client._image_token_id = None
+    client._image_token_id_resolved = False
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(client._count_visual_tokens, [151655, 151655])
+        try:
+            assert started.wait(timeout=5)
+            second = pool.submit(client._count_visual_tokens, [151655, 151655])
+            assert second.result(timeout=5) == 2
+        finally:
+            release.set()
+        assert first.result(timeout=5) == 2
+
+
+@pytest.mark.parametrize("error_type", [
+    TrajectoryModelRequestTimeoutError,
+    TrajectoryContextLengthExceededError,
+    TrajectoryVisionEncoderCacheExceededError,
+])
+def test_failed_second_request_marks_cumulative_tokens_incomplete(error_type):
+    class FailingSecondModel(FakeModel):
+        def generate_one_item(self, item):
+            if not self.responses:
+                raise error_type("second request failed")
+            return super().generate_one_item(item)
+
+    response = ModelTurnResponse(
+        '<think>locate</think><tool_call>{"name":"PhraseToPoint",'
+        '"arguments":{"images":["img_0"],"phrase":"person"}}</tool_call>',
+        prompt_token_count=100, visual_token_count=40, completion_token_count=10,
+    )
+    inferencer = make_inferencer([response, ModelTurnResponse("unused")])
+    inferencer.tp_model = FailingSecondModel([response])
+    item = inferencer.process_single_trajectory(make_item(inferencer))
+    metrics = item.efficiency_metrics
+    assert item.trajectory_invalid is True
+    assert metrics["model_call_count"] == 2
+    assert metrics["successful_model_call_count"] == 1
+    for kind in ("prompt", "visual", "completion"):
+        assert metrics[f"cumulative_{kind}_tokens"] is None
+        assert metrics[f"{kind}_token_metrics_missing_calls"] == 1
+    assert metrics["max_visual_tokens_per_call"] is None
+    assert len(item.turn_records) == 1
+    assert item.turn_records[0]["prompt_token_count"] == 100
+    assert metrics["trajectory_elapsed_seconds"] >= metrics["llm_generate_seconds"]
+
+
+def test_tool_failure_does_not_invalidate_returned_model_token_counts():
+    class FailingTool(FakeToolCaller):
+        def call(self, tool_name, tool_parameters):
+            raise ToolOOMRetriesExhaustedError(
+                {"tool_name": tool_name, "oom_attempts": 5,
+                 "message": "five consecutive OOM responses"}
+            )
+
+    inferencer = make_inferencer([
+        ModelTurnResponse(
+            '<think>locate</think><tool_call>{"name":"PhraseToPoint",'
+            '"arguments":{"images":["img_0"],"phrase":"person"}}</tool_call>',
+            prompt_token_count=100, visual_token_count=40, completion_token_count=10,
+        ),
+    ], tool_caller=FailingTool())
+    item = inferencer.process_single_trajectory(make_item(inferencer))
+    assert item.trajectory_invalid is True
+    assert item.efficiency_metrics["cumulative_visual_tokens"] == 40
+    assert item.efficiency_metrics["visual_token_metrics_missing_calls"] == 0
 
 
 def test_parallel_inference_persists_run_level_benchmark_summary(tmp_path):

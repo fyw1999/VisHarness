@@ -423,6 +423,25 @@ python -m visharness.trajectory_runner \
   --config recipe/visharness/configs/trajectory_runner/VisHarness.yaml
 ```
 
+Time and token statistics are always recorded. `benchmark.enabled` only
+enables GPU memory and vLLM resource monitoring and defaults to `false`.
+When enabling it, set `gpu_indices` to the serving GPUs and
+`tensor_parallel_size` to the server's TP size (not its number of replicas).
+Peak active KV memory is calculated separately for each replica before taking
+the maximum. If vLLM does not expose its KV pool capacity, usage is still
+recorded, but active memory is `N/A` unless you supply the actual capacity
+through `kv_cache_pool_gib_per_gpu` (a GiB/GPU value, or a map of engine IDs
+to values). Do not substitute total GPU memory. Use an otherwise idle serving
+service for comparisons: resource metrics include other traffic on that service.
+
+MLLM request time includes client preparation, server queueing, network time,
+and SDK retries; expert-call time also includes queueing and response processing.
+These are elapsed request times, not pure GPU compute times. Token counts refer
+to returned responses, not unseen server work during failed attempts. If a
+model request fails without a response, the trajectory's cumulative token totals
+are marked unavailable rather than reporting a partial total. Evaluation JSON
+reports each metric's sample count, missing count, and coverage alongside its mean.
+
 # RL Training
 
 ## Step 1: prepare the training and validation parquet files

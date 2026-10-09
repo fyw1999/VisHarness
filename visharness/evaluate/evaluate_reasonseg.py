@@ -272,9 +272,10 @@ def print_reasonseg_summary_table(metrics: dict[str, Any]) -> None:
         unit="GiB/GPU",
     )
     peak_kv_usage_percent = run_level.get(
-        "peak_kv_cache_usage_percent"
+        "peak_active_kv_cache_usage_percent",
+        run_level.get("peak_kv_cache_usage_percent"),
     )
-    if peak_kv_usage_percent is None:
+    if peak_kv_usage_percent is None and "peak_active_kv_cache_usage_percent" not in run_level:
         peak_kv_usage = run_level.get("peak_kv_cache_usage")
         if peak_kv_usage is not None:
             try:
