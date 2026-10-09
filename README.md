@@ -390,6 +390,14 @@ highest throughput for every workload. With fewer GPUs or less memory, reduce
 the number of replicas or increase tensor parallel size. The product of the
 tensor parallel and data parallel sizes must match the number of GPUs used.
 
+Inference typically uses fewer GPUs for the MLLM than training, leaving spare
+GPUs available to deploy additional visual expert instances. To enable them,
+uncomment the tool blocks starting at `PhraseToPoint` in
+`tool_server/tool_workers/scripts/launch_scripts/config/controller_local_tools.yaml`.
+Adjust their `cuda_visible_devices`, model paths, and Conda environments to
+your setup, using GPUs not assigned to the MLLM, then launch the local tools
+with the updated configuration.
+
 Start the server from the project root:
 
 ```bash
