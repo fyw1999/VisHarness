@@ -32,3 +32,136 @@ tool_worker_config:
           iou-threshold: 0.8
           fragment-overlap-ratio: 0.2
           fragment-edge-margin-ratio: 0.03
+
+  - PhraseToPoint:
+      PhraseToPoint_local_1:
+        calculate_type: control
+        conda_env: "Molmo"
+        cuda_visible_devices: "4"
+        cmd:
+          limit-model-concurrency: 16
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/phrase_to_points_vllm_worker.py
+          port: 20038
+          host: "0.0.0.0"
+          model-path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/LLM/Molmo2-4B/
+          max_tokens: 4092
+          max_batch_size: 10
+          gpu_memory_utilization: 0.8
+          max_num_batched_tokens: 60000
+
+      PhraseToPoint_local_2:
+        calculate_type: control
+        conda_env: "Molmo"
+        cuda_visible_devices: "5"
+        cmd:
+          limit-model-concurrency: 16
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/phrase_to_points_vllm_worker.py
+          port: 20039
+          host: "0.0.0.0"
+          model-path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/LLM/Molmo2-4B/
+          max_tokens: 4092
+          max_batch_size: 10
+          gpu_memory_utilization: 0.8
+          max_num_batched_tokens: 60000
+
+
+  - PhraseToBoxMask:
+      PhraseToBoxMask_local_1:
+        calculate_type: control
+        conda_env: "SAM"
+        cuda_visible_devices: "6"
+        cmd:
+          limit-model-concurrency: 16
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/phrase_to_box_mask_worker.py
+          port: 20040
+          host: "0.0.0.0"
+          model-path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/foundation_models/SAM3/sam3.pt
+          max_batch_size: 8
+          batch_wait_ms: 50
+          max_queries_per_batch: 8
+          mask_chunk_size: 0
+          mask_postprocess_budget_mb: 2048
+
+      PhraseToBoxMask_local_2:
+        calculate_type: control
+        conda_env: "SAM"
+        cuda_visible_devices: "6"
+        cmd:
+          limit-model-concurrency: 16
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/phrase_to_box_mask_worker.py
+          port: 20041
+          host: "0.0.0.0"
+          model-path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/foundation_models/SAM3/sam3.pt
+          max_batch_size: 8
+          batch_wait_ms: 50
+          max_queries_per_batch: 8
+          mask_chunk_size: 0
+          mask_postprocess_budget_mb: 2048
+
+  - PointToBoxMask:
+      PointToBoxMask_local_1:
+        calculate_type: control
+        conda_env: "SAM"
+        cuda_visible_devices: "7"
+        cmd:
+          limit-model-concurrency: 8
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/point_to_box_mask_worker.py
+          port: 20042
+          host: "0.0.0.0"
+          model-path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/foundation_models/SAM3/sam3.pt
+          max_batch_size: 4
+          batch_wait_ms: 50
+          max_points_per_forward_confidence: 96
+          max_points_per_forward_area: 32
+          point_mask_postprocess_budget_mb: 2048
+
+      PointToBoxMask_local_2:
+        calculate_type: control
+        conda_env: "SAM"
+        cuda_visible_devices: "7"
+        cmd:
+          limit-model-concurrency: 8
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/point_to_box_mask_worker.py
+          port: 20043
+          host: "0.0.0.0"
+          model-path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/foundation_models/SAM3/sam3.pt
+          max_batch_size: 4
+          batch_wait_ms: 50
+          max_points_per_forward_confidence: 96
+          max_points_per_forward_area: 32
+          point_mask_postprocess_budget_mb: 2048
+
+  - SuperResolution:
+      SuperResolution_local_1:
+        calculate_type: control
+        conda_env: "SuperResolution"
+        cuda_visible_devices: "4"
+        cmd:
+          limit-model-concurrency: 4
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/super_resolution_worker.py
+          port: 20044
+          host: "0.0.0.0"
+          model-path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/super_resolution/Real-ESRGAN/realesr-general-x4v3.pth
+          max_batch_size: 2
+          batch_wait_ms: 30
+
+      SuperResolution_local_2:
+        calculate_type: control
+        conda_env: "SuperResolution"
+        cuda_visible_devices: "5"
+        cmd:
+          limit-model-concurrency: 4
+          controller-address: http://localhost:20001
+          script-addr: ./online_workers/super_resolution_worker.py
+          port: 20045
+          host: "0.0.0.0"
+          model-path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/super_resolution/Real-ESRGAN/realesr-general-x4v3.pth
+          max_batch_size: 2
+          batch_wait_ms: 30

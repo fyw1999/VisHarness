@@ -1,6 +1,6 @@
 tool_worker_config:
   - PhraseToPoint:
-      PhraseToPoint_h20_1:
+      PhraseToPoint_remote_1:
         calculate_type: control
         conda_env: "Molmo"
         cuda_visible_devices: "0"
@@ -16,7 +16,7 @@ tool_worker_config:
           gpu_memory_utilization: 0.8
           max_num_batched_tokens: 60000
 
-      PhraseToPoint_h20_2:
+      PhraseToPoint_remote_2:
         calculate_type: control
         conda_env: "Molmo"
         cuda_visible_devices: "1"
@@ -34,7 +34,7 @@ tool_worker_config:
 
 
   - PhraseToBoxMask:
-      PhraseToBoxMask_h20_1:
+      PhraseToBoxMask_remote_1:
         calculate_type: control
         conda_env: "SAM"
         cuda_visible_devices: "2"
@@ -51,7 +51,7 @@ tool_worker_config:
           mask_chunk_size: 0
           mask_postprocess_budget_mb: 2048
 
-      PhraseToBoxMask_h20_2:
+      PhraseToBoxMask_remote_2:
         calculate_type: control
         conda_env: "SAM"
         cuda_visible_devices: "2"
@@ -69,7 +69,7 @@ tool_worker_config:
           mask_postprocess_budget_mb: 2048
 
   - PointToBoxMask:
-      PointToBoxMask_h20_1:
+      PointToBoxMask_remote_1:
         calculate_type: control
         conda_env: "SAM"
         cuda_visible_devices: "3"
@@ -86,7 +86,7 @@ tool_worker_config:
           max_points_per_forward_area: 32
           point_mask_postprocess_budget_mb: 2048
 
-      PointToBoxMask_h20_2:
+      PointToBoxMask_remote_2:
         calculate_type: control
         conda_env: "SAM"
         cuda_visible_devices: "3"
@@ -104,7 +104,7 @@ tool_worker_config:
           point_mask_postprocess_budget_mb: 2048
 
   - SuperResolution:
-      SuperResolution_h20_1:
+      SuperResolution_remote_1:
         calculate_type: control
         conda_env: "SuperResolution"
         cuda_visible_devices: "0"
@@ -118,7 +118,7 @@ tool_worker_config:
           max_batch_size: 2
           batch_wait_ms: 30
 
-      SuperResolution_h20_2:
+      SuperResolution_remote_2:
         calculate_type: control
         conda_env: "SuperResolution"
         cuda_visible_devices: "1"
