@@ -2836,7 +2836,7 @@ def test_vllm_cache_config_parsing_and_qwen_kv_capacity(
     )
     metrics_text = (
         '# HELP vllm:cache_config_info cache config\n'
-        'vllm:cache_config_info{block_size="16",cache_dtype="auto",'
+        'vllm:cache_config_info{block_size="16",cache_dtype="bfloat16",'
         'kv_cache_memory_bytes="None",num_gpu_blocks="50196"} 1.0\n'
     )
 

@@ -13,6 +13,7 @@
 !/environment/**/*.yaml
 !/environment/**/*.yml
 !/environment/**/*.sh
+!/environment/patches/*.patch
 
 # VisHarness implementation.
 !/visharness/

@@ -25,7 +25,7 @@ Run the following commands from the repository root. This is required because
 the environment installs the checked-out verl submodule in editable mode.
 
 ```bash
-conda env create -f environment/VisHarness.yml
+bash environment/create_main_env.sh
 conda activate VisHarness
 python -m pip check
 ```
@@ -34,6 +34,11 @@ python -m pip check
 the tool controller, and the two local CPU tools. The GPU-backed visual experts
 use isolated environments because their model stacks have different Python and
 runtime requirements.
+
+The tested main stack is vLLM 0.24.0 with PyTorch 2.11.0 (CUDA 12.9).
+The setup script temporarily updates only verl's package dependency declarations
+for this stack, then restores the submodule; it does not change verl's training
+implementation. Use this script rather than installing the YAML directly.
 
 ## Step 3: create the visual expert environments
 
@@ -428,15 +433,14 @@ enables GPU memory and vLLM resource monitoring and defaults to `false`.
 When enabling it, set `gpu_indices` to the serving GPUs and
 `tensor_parallel_size` to the server's TP size (not its number of replicas).
 Peak active KV memory is calculated separately for each replica before taking
-the maximum. The deployment script runs `vllm serve` directly and saves its
-output to `outputs/vllm/server.log`. When `/metrics` omits the capacity, the
-runner reads and caches the startup capacity of each replica from this log,
-using the actual serving dtype rather than the checkpoint's weight dtype.
-The serving process, model, and port must match; old logs are ignored. No
-Python launcher or capacity setting in YAML is needed. This automatic fallback
-requires the local service to be started with the provided deployment script;
-unavailable or unsupported capacity is reported as `N/A`, never guessed from
-total GPU memory. Use an otherwise idle serving service for comparisons:
+the maximum. With vLLM 0.24.0, the runner reads per-replica capacity directly
+from `/metrics` (`kv_cache_size_tokens`), not the DP-aggregated block count.
+The deployment script explicitly sets BF16 model and KV-cache dtypes and runs
+`vllm serve` directly. It does not save server logs. No Python launcher or
+manual capacity setting in YAML is needed. When using another launch command,
+set `--kv-cache-dtype` explicitly: an `auto` dtype cannot reliably be inferred
+from checkpoint weights. Missing or unsupported capacity is reported as `N/A`,
+never guessed from total GPU memory. Use an otherwise idle serving service for comparisons:
 resource metrics include other traffic on that service.
 
 MLLM request time includes client preparation, server queueing, network time,
