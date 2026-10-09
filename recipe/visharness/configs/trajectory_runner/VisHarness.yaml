@@ -1,7 +1,7 @@
 mode: inference
 model_args: 
-  model_name: VisionAgent
-  tokenizer_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisionAgent/checkpoints/sft/Qwen3-VL-8B-Thinking/v0-20260518-001941/checkpoint-103
+  model_name: VisHarness
+  tokenizer_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisHarness-public/checkpoints/VisHarness/VisHarness-grpo-sft105-p8-filterstd02-trajeq-valsample-v1/archived/global_step_550
   base_url: http://localhost:8000/v1
   api_key: EMPTY
 
@@ -36,7 +36,7 @@ dataset_args:
   split: test
   dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/REC-8K/
   resume_from_ckpt: 
-  save_path: results/vision_agent_sft_qwen3vl_REC8K_test
+  save_path: results/VisHarness_REC8K_test
   save_trajectory: False
   num_sample: null
   

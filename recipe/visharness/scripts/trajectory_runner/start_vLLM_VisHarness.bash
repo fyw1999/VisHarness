@@ -3,11 +3,11 @@
 
 export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 unset LD_PRELOAD
-MODEL="/vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisionAgent/checkpoints/sft/Qwen3-VL-8B-Thinking/v0-20260518-001941/checkpoint-103"
+MODEL="/vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisHarness-public/checkpoints/VisHarness/VisHarness-grpo-sft105-p8-filterstd02-trajeq-valsample-v1/archived/global_step_550"
 echo ">>> Starting the vLLM server..."
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 vllm serve "$MODEL" \
-    --served-model-name VisionAgent \
+    --served-model-name VisHarness \
     --tensor-parallel-size 1 \
     --data-parallel-size 4 \
     --async-scheduling \

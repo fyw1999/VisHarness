@@ -353,6 +353,62 @@ The script prints one encoded SFT training sample to the console, including the
 complete model input and the supervised portion that is used to compute the
 training loss.
 
+# Inference after SFT
+
+## Step 1: deploy the SFT model with vLLM
+
+After SFT training finishes, edit
+`recipe/visharness/scripts/trajectory_runner/start_vLLM_VisHarness.bash` and set
+`MODEL` to your SFT checkpoint. By default, use the last checkpoint saved by
+training, such as `checkpoint-105` for the run described above:
+
+```bash
+MODEL="/path/to/your/sft-run/checkpoint-105"
+```
+
+Also adjust `CUDA_VISIBLE_DEVICES`, `--tensor-parallel-size`, and
+`--data-parallel-size` to match your GPUs. The example in the script uses four
+GPUs (`CUDA_VISIBLE_DEVICES=0,1,2,3`) with:
+
+```bash
+    --tensor-parallel-size 1 \
+    --data-parallel-size 4 \
+```
+
+This configuration runs four independent model replicas, one per GPU, to
+maximize concurrent request throughput when the model fits on a single GPU.
+Each replica can process multiple requests; data parallel size is not the
+maximum number of concurrent trajectories. For the 8B model on four A100 80GB
+GPUs, this is a throughput-oriented starting point, not a guarantee of the
+highest throughput for every workload. With fewer GPUs or less memory, reduce
+the number of replicas or increase tensor parallel size. The product of the
+tensor parallel and data parallel sizes must match the number of GPUs used.
+
+Start the server from the project root:
+
+```bash
+bash recipe/visharness/scripts/trajectory_runner/start_vLLM_VisHarness.bash
+```
+
+## Step 2: run inference
+
+In `recipe/visharness/configs/trajectory_runner/VisHarness.yaml`, keep
+`mode: inference`, set `model_args.tokenizer_path` to the same SFT checkpoint,
+and use `model_args.model_name: VisHarness` to match the server's
+`--served-model-name`. Set `model_args.base_url` to the vLLM API address
+(`http://localhost:8000/v1` when running locally).
+
+Configure `dataset_args.task_names`, `split`, `dataset_path`, and `save_path`
+for the dataset to evaluate. `batch_size` controls the maximum number of
+concurrent trajectories; adjust it to make use of the deployed replicas.
+Keep the visual expert services running, then launch inference from the
+project root in another terminal:
+
+```bash
+python -m visharness.trajectory_runner \
+  --config recipe/visharness/configs/trajectory_runner/VisHarness.yaml
+```
+
 # RL Training
 
 ## Step 1: prepare the training and validation parquet files
