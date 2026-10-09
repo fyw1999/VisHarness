@@ -1,9 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../../../.." && pwd)"
+
+# Resolve relative checkpoint paths against this checkout, not the working directory.
+MODEL="${MODEL:-checkpoints/VisHarness/VisHarness-grpo-sft105-p8-filterstd02-trajeq-valsample-v1/archived/global_step_550}"
+if [[ "$MODEL" != /* ]]; then
+    MODEL="$PROJECT_ROOT/$MODEL"
+fi
+
 # unset LD_LIBRARY_PATH
 
 export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
 unset LD_PRELOAD
-MODEL="/vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisHarness-public/checkpoints/VisHarness/VisHarness-grpo-sft105-p8-filterstd02-trajeq-valsample-v1/archived/global_step_550"
 echo ">>> Starting the vLLM server..."
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 vllm serve "$MODEL" \
