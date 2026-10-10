@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../../../.." && pwd)"
 
 # Resolve relative checkpoint paths against this checkout, not the working directory.
-MODEL="${MODEL:-checkpoints/sft/Qwen3-VL-8B-Thinking/v0-20260928-211731/checkpoint-105}"
+MODEL="${MODEL:-checkpoints/VisHarness/VisHarness-grpo-sft105-p8-filterstd02-trajeq-valsample-v1/archived/global_step_559}"
 if [[ "$MODEL" != /* ]]; then
     MODEL="$PROJECT_ROOT/$MODEL"
 fi

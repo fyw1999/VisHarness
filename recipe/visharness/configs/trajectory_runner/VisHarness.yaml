@@ -1,7 +1,7 @@
 mode: inference
 model_args: 
   model_name: VisHarness
-  tokenizer_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisHarness-public/checkpoints/sft/Qwen3-VL-8B-Thinking/v0-20260928-211731/checkpoint-105
+  tokenizer_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/code/VisHarness-public/checkpoints/VisHarness/VisHarness-grpo-sft105-p8-filterstd02-trajeq-valsample-v1/archived/global_step_559
   base_url: http://localhost:8000/v1
   api_key: EMPTY
 
@@ -34,11 +34,11 @@ generation_args:
     
 dataset_args:
   task_names:
-    GRES
-  split: testB
-  dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/GRES/
+    REC8K
+  split: val
+  dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/REC-8K/
   resume_from_ckpt: 
-  save_path: results/VisHarness_SFT_GRES_testB
+  save_path: results/VisHarness_GRPO_559_REC8K_val
   save_trajectory: False
   num_sample: null
   
