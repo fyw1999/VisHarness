@@ -29,7 +29,10 @@ from visharness.evaluate.evaluate_rec8k import (
     evaluate_rec8k,
     print_rec8k_summary_table,
 )
-from visharness.evaluate.evaluate_dense200 import evaluate_dense200
+from visharness.evaluate.evaluate_dense200 import (
+    evaluate_dense200,
+    print_dense200_summary_table,
+)
 
 
 def _rle(mask: np.ndarray) -> dict:
@@ -264,11 +267,20 @@ def test_dense200_end_to_end_coordinate_restore(tmp_path: Path) -> None:
         prediction_path,
         manifest_path,
         dataset_root,
+        metrics_output=tmp_path / "evaluation_metrics.json",
+        per_sample_output=tmp_path / "evaluation_per_sample.jsonl",
     )
     assert metrics["F1@0.50"] == pytest.approx(1.0)
     assert metrics["F1@0.95"] == pytest.approx(1.0)
     assert metrics["status"]["max_rounds_reached"] == 1
     assert metrics["status"]["valid_visual_results"] == 1
+    saved_metrics = json.loads((tmp_path / "evaluation_metrics.json").read_text())
+    assert saved_metrics == metrics
+    assert len(saved_metrics["per_threshold"]) == 10
+    assert "efficiency" in saved_metrics
+    saved_sample = json.loads((tmp_path / "evaluation_per_sample.jsonl").read_text())
+    assert saved_sample["id"] == "Dense200-sample-object"
+    assert len(saved_sample["tp_by_iou"]) == 10
 
 
 def test_rec8k_end_to_end_coordinate_restore(tmp_path: Path) -> None:
@@ -511,6 +523,7 @@ def test_efficiency_summary_keeps_active_memory_and_usage_paired(tmp_path, incom
 
 @pytest.mark.parametrize("printer", [
     print_rec8k_summary_table, print_gres_summary_table, print_reasonseg_summary_table,
+    print_dense200_summary_table,
 ])
 def test_tables_use_usage_of_the_engine_with_peak_active_memory(printer, capsys):
     printer({"efficiency": {"run_level": {
@@ -546,6 +559,121 @@ def test_manual_evaluation_capacity_requires_replica_usage_coverage(tmp_path, mi
     assert run["peak_active_kv_cache_memory_per_gpu_gib"] == (
         None if missing_replica else 2.0
     )
+
+
+def test_print_dense200_summary_table(capsys: pytest.CaptureFixture[str]) -> None:
+    print_dense200_summary_table(
+        {
+            "F1@0.50": 0.625,
+            "F1@0.95": 0.125,
+            "F1@0.50:0.95": 0.375,
+            "efficiency": {
+                "per_trajectory": {
+                    "average_cumulative_visual_tokens": 1234.567,
+                    "average_trajectory_elapsed_seconds": 6.75,
+                },
+                "run_level": {
+                    "rollout_throughput_trajectories_per_minute": 8.5,
+                    "peak_active_kv_cache_memory_per_gpu_gib": 6.5,
+                    "peak_kv_cache_usage_percent": 13.0,
+                },
+            },
+        }
+    )
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 3
+    assert lines[0] == (
+        "| F1@0.50 | F1@0.95 | F1@0.50:0.95 | "
+        "Avg. Visual Tokens/Trajectory | Avg. Latency | "
+        "Peak active KV memory | rollout throughput |"
+    )
+    assert lines[1] == "| --- | --- | --- | --- | --- | --- | --- |"
+    assert lines[2] == (
+        "| 0.6250 | 0.1250 | 0.3750 | 1234.57 | 6.75 s/trajectory | "
+        "6.50 GiB/GPU (13.00%) | 8.50 trajectories/min |"
+    )
+
+
+@pytest.mark.parametrize("efficiency", [
+    None, {}, {"per_trajectory": None, "run_level": None},
+])
+def test_print_dense200_summary_table_handles_missing_benchmark_metrics(
+    efficiency, capsys: pytest.CaptureFixture[str],
+) -> None:
+    print_dense200_summary_table({
+        "F1@0.50": 0.5, "F1@0.95": 0.25, "F1@0.50:0.95": 0.375,
+        "efficiency": efficiency,
+    })
+
+    assert capsys.readouterr().out.splitlines()[2] == (
+        "| 0.5000 | 0.2500 | 0.3750 | N/A | N/A | N/A | N/A |"
+    )
+
+
+def test_print_dense200_summary_table_preserves_zero_values(capsys) -> None:
+    print_dense200_summary_table({
+        "F1@0.50": 0.0, "F1@0.95": 0.0, "F1@0.50:0.95": 0.0,
+        "efficiency": {
+            "per_trajectory": {
+                "average_cumulative_visual_tokens": 0,
+                "average_trajectory_elapsed_seconds": 0,
+            },
+            "run_level": {
+                "peak_active_kv_cache_memory_per_gpu_gib": 0,
+                "peak_kv_cache_usage": 0,
+                "rollout_throughput_trajectories_per_minute": 0,
+            },
+        },
+    })
+
+    assert capsys.readouterr().out.splitlines()[2] == (
+        "| 0.0000 | 0.0000 | 0.0000 | 0.00 | 0.00 s/trajectory | "
+        "0.00 GiB/GPU (0.00%) | 0.00 trajectories/min |"
+    )
+
+
+def test_print_dense200_summary_table_handles_invalid_values(capsys) -> None:
+    print_dense200_summary_table({
+        "F1@0.50": float("nan"), "F1@0.95": True, "F1@0.50:0.95": "invalid",
+        "efficiency": {
+            "per_trajectory": {
+                "average_cumulative_visual_tokens": float("inf"),
+                "average_trajectory_elapsed_seconds": None,
+            },
+            "run_level": {
+                "peak_active_kv_cache_memory_per_gpu_gib": None,
+                "peak_kv_cache_usage_percent": 50.0,
+                "rollout_throughput_trajectories_per_minute": "invalid",
+            },
+        },
+    })
+
+    assert capsys.readouterr().out.splitlines()[2] == (
+        "| N/A | N/A | N/A | N/A | N/A | N/A | N/A |"
+    )
+
+
+def test_dense200_cli_prints_summary_instead_of_full_json(monkeypatch, capsys) -> None:
+    from visharness.evaluate import evaluate_dense200 as dense200_module
+
+    monkeypatch.setattr("sys.argv", [
+        "evaluate_dense200", "--predictions", "predictions.jsonl",
+        "--manifest", "manifest.json", "--dataset-root", "dataset",
+    ])
+    monkeypatch.setattr(dense200_module, "evaluate_dense200", lambda *args, **kwargs: {
+        "F1@0.50": 0.5, "F1@0.95": 0.25, "F1@0.50:0.95": 0.375,
+        "per_threshold": {"0.50": {"F1": 0.5}},
+        "status": {"expected_samples": 200},
+    })
+
+    dense200_module.main()
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 3
+    assert lines[0].startswith("| F1@0.50 |")
+    assert "per_threshold" not in "\n".join(lines)
+    assert "expected_samples" not in "\n".join(lines)
 
 
 def test_print_rec8k_summary_table(capsys: pytest.CaptureFixture[str]) -> None:

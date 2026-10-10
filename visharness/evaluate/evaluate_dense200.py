@@ -17,7 +17,6 @@ from visharness.evaluate.common import (
     load_manifest,
     load_records,
     prediction_status_summary,
-    print_metrics,
     resolve_image_path,
     restore_boxes_to_original,
     summarize_efficiency_metrics,
@@ -241,6 +240,98 @@ def evaluate_dense200(
     return metrics
 
 
+def _format_table_metric(
+    value: Any,
+    *,
+    precision: int = 2,
+    unit: str = "",
+) -> str:
+    if value is None or isinstance(value, bool):
+        return "N/A"
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+    if not np.isfinite(numeric_value):
+        return "N/A"
+    formatted = f"{numeric_value:.{precision}f}"
+    return f"{formatted} {unit}".rstrip()
+
+
+def print_dense200_summary_table(metrics: dict[str, Any]) -> None:
+    """Print compact Dense200 task and efficiency metrics as a Markdown table."""
+
+    efficiency = metrics.get("efficiency")
+    if not isinstance(efficiency, dict):
+        efficiency = {}
+    per_trajectory = efficiency.get("per_trajectory")
+    if not isinstance(per_trajectory, dict):
+        per_trajectory = {}
+    run_level = efficiency.get("run_level")
+    if not isinstance(run_level, dict):
+        run_level = {}
+
+    peak_active_kv_memory = _format_table_metric(
+        run_level.get("peak_active_kv_cache_memory_per_gpu_gib"),
+        precision=2,
+        unit="GiB/GPU",
+    )
+    peak_kv_usage_percent = run_level.get(
+        "peak_active_kv_cache_usage_percent",
+        run_level.get("peak_kv_cache_usage_percent"),
+    )
+    if peak_kv_usage_percent is None and "peak_active_kv_cache_usage_percent" not in run_level:
+        peak_kv_usage = run_level.get("peak_kv_cache_usage")
+        if peak_kv_usage is not None:
+            try:
+                peak_kv_usage_percent = float(peak_kv_usage) * 100.0
+            except (TypeError, ValueError):
+                peak_kv_usage_percent = None
+    formatted_peak_kv_usage = _format_table_metric(
+        peak_kv_usage_percent,
+        precision=2,
+    )
+    if formatted_peak_kv_usage != "N/A":
+        formatted_peak_kv_usage = f"{formatted_peak_kv_usage}%"
+    if peak_active_kv_memory != "N/A" and formatted_peak_kv_usage != "N/A":
+        peak_active_kv_memory = (
+            f"{peak_active_kv_memory} ({formatted_peak_kv_usage})"
+        )
+
+    headers = (
+        "F1@0.50",
+        "F1@0.95",
+        "F1@0.50:0.95",
+        "Avg. Visual Tokens/Trajectory",
+        "Avg. Latency",
+        "Peak active KV memory",
+        "rollout throughput",
+    )
+    values = (
+        _format_table_metric(metrics.get("F1@0.50"), precision=4),
+        _format_table_metric(metrics.get("F1@0.95"), precision=4),
+        _format_table_metric(metrics.get("F1@0.50:0.95"), precision=4),
+        _format_table_metric(
+            per_trajectory.get("average_cumulative_visual_tokens"),
+            precision=2,
+        ),
+        _format_table_metric(
+            per_trajectory.get("average_trajectory_elapsed_seconds"),
+            precision=2,
+            unit="s/trajectory",
+        ),
+        peak_active_kv_memory,
+        _format_table_metric(
+            run_level.get("rollout_throughput_trajectories_per_minute"),
+            precision=2,
+            unit="trajectories/min",
+        ),
+    )
+    print("| " + " | ".join(headers) + " |")
+    print("| " + " | ".join("---" for _ in headers) + " |")
+    print("| " + " | ".join(values) + " |")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--predictions", nargs="+", required=True)
@@ -266,7 +357,7 @@ def main() -> None:
         aspect_ratio_tolerance=args.aspect_ratio_tolerance,
         strict_jsonl=not args.allow_malformed_lines,
     )
-    print_metrics(metrics)
+    print_dense200_summary_table(metrics)
 
 
 if __name__ == "__main__":
