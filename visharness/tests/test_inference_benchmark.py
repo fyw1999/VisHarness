@@ -323,7 +323,8 @@ def test_deployment_script_uses_direct_cli_without_log_files(tmp_path):
         ["bash", str(script)], cwd=tmp_path, env=env,
         check=True, text=True, capture_output=True,
     )
-    actual = json.loads(result.stdout.splitlines()[-1])
+    assert result.stdout.splitlines()[-1] == ">>> The vLLM server has stopped."
+    actual = json.loads(result.stdout.splitlines()[-2])
     args = actual["args"]
     assert args[:2] == [
         "serve", str(root / "checkpoints/sft/Qwen3-VL-8B-Thinking/v0-20260928-211731/checkpoint-105")

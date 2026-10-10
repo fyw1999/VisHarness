@@ -18,7 +18,7 @@ unset LD_PRELOAD
 # Output stays in the terminal; no vLLM log file is created.
 echo ">>> Starting the vLLM server..."
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-exec vllm serve "$MODEL" \
+vllm serve "$MODEL" \
     --served-model-name VisHarness \
     --tensor-parallel-size 1 \
     --data-parallel-size 4 \
@@ -33,3 +33,5 @@ exec vllm serve "$MODEL" \
     --gpu-memory-utilization 0.85 \
     --max-model-len 125000 \
     --chat-template-content-format openai
+
+echo ">>> The vLLM server has stopped."
