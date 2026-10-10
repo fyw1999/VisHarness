@@ -35,10 +35,10 @@ generation_args:
 dataset_args:
   task_names:
     GRES
-  split: val
+  split: testB
   dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/GRES/
   resume_from_ckpt: 
-  save_path: results/VisHarness_GRPO_GRES_val
+  save_path: results/VisHarness_SFT_GRES_testB
   save_trajectory: False
   num_sample: null
   
