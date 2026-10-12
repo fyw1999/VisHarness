@@ -336,3 +336,74 @@ def test_deployment_script_uses_direct_cli_without_log_files(tmp_path):
         assert args[args.index(flag) + 1] == value
     assert actual["gpus"] == "0,1,2,3"
     assert not (root / "outputs").exists()
+
+
+@pytest.mark.parametrize("relative_model", [True, False])
+def test_qwen3vl_deployment_paths_flags_and_failures(tmp_path, relative_model):
+    project = Path(__file__).resolve().parents[2]
+    relative = Path("recipe/visharness/scripts/trajectory_runner/start_vLLM_qwen3vl-8B.bash")
+    root = tmp_path / "checkout"
+    script = root / relative
+    script.parent.mkdir(parents=True)
+    shutil.copy2(project / relative, script)
+    model = root / "models/Qwen3 VL"
+    model.mkdir(parents=True)
+    (model / "config.json").write_text("{}")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "vllm"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "print(json.dumps({'args': sys.argv[1:], 'gpus': os.environ.get('CUDA_VISIBLE_DEVICES'), "
+        "'library_path': os.environ.get('LD_LIBRARY_PATH')}))\n"
+        "sys.exit(int(os.environ.get('VLLM_TEST_EXIT_CODE', '0')))\n"
+    )
+    fake.chmod(0o755)
+    env = dict(
+        os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}",
+        MODEL=str(model.relative_to(root) if relative_model else model),
+    )
+    # The launcher must also work when these optional environment variables are unset.
+    for key in ("CONDA_PREFIX", "LD_LIBRARY_PATH", "VLLM_TEST_EXIT_CODE"):
+        env.pop(key, None)
+    result = subprocess.run(
+        ["bash", str(script)], cwd=tmp_path, env=env,
+        check=True, text=True, capture_output=True,
+    )
+    actual = json.loads(result.stdout.splitlines()[-2])
+    args = actual["args"]
+    assert args[:2] == ["serve", str(model)]
+    for flag, value in [
+        ("--served-model-name", "Qwen3-VL-8B"),
+        ("--tensor-parallel-size", "1"), ("--data-parallel-size", "4"),
+        ("--dtype", "bfloat16"), ("--kv-cache-dtype", "bfloat16"),
+        ("--gpu-memory-utilization", "0.85"), ("--max-model-len", "125000"),
+        ("--tool-call-parser", "hermes"), ("--reasoning-parser", "deepseek_r1"),
+        ("--chat-template-content-format", "openai"),
+    ]:
+        assert args[args.index(flag) + 1] == value
+    assert "--async-scheduling" in args
+    assert "--enable-prefix-caching" in args
+    assert "--enable-auto-tool-choice" in args
+    assert actual["gpus"] == "0,1,2,3"
+    assert actual["library_path"] == "/usr/local/cuda/lib64"
+    assert result.stdout.splitlines()[-1] == ">>> The vLLM server has stopped."
+    assert not (root / "outputs").exists()
+
+    # Report a server failure through the shell exit status, without a success message.
+    env["VLLM_TEST_EXIT_CODE"] = "17"
+    failed = subprocess.run(
+        ["bash", str(script)], cwd=tmp_path, env=env, text=True, capture_output=True,
+    )
+    assert failed.returncode == 17
+    assert "The vLLM server has stopped." not in failed.stdout
+
+    # Reject missing model directories before invoking vLLM.
+    env["MODEL"] = "models/missing"
+    missing = subprocess.run(
+        ["bash", str(script)], cwd=tmp_path, env=env, text=True, capture_output=True,
+    )
+    assert missing.returncode == 1
+    assert "config.json not found" in missing.stderr
+    assert not missing.stdout

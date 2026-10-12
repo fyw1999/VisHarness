@@ -5,16 +5,16 @@ model_args:
   base_url: http://localhost:8000/v1
   api_key: EMPTY
 
-batch_size: 12
+batch_size: 24
 max_rounds: 12
 # true: dynamic archive; false: retain every historical visual image.
 archive_previous_images: true
 
 benchmark:
   enabled: false
-  gpu_indices: [0, 1]
+  gpu_indices: [0, 1, 2, 3]
   # Must match the vLLM server's -tp/--tensor-parallel-size value.
-  tensor_parallel_size: 2
+  tensor_parallel_size: 1
   sample_interval_seconds: 0.2
   save_resource_trace: true
 
@@ -36,7 +36,7 @@ dataset_args:
   split: val
   dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/REC-8K/
   resume_from_ckpt: 
-  save_path: results/qwen3vl-8B_REC8K_val_2
+  save_path: results/qwen3vl-8B_REC8K_val
   save_trajectory: False
   num_sample: null
   
