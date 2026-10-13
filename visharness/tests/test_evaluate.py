@@ -30,6 +30,8 @@ from visharness.evaluate.evaluate_rec8k import (
     print_rec8k_summary_table,
 )
 from visharness.evaluate.evaluate_dense200 import (
+    _compute_sample_metrics,
+    _gt_order_iou_matches,
     evaluate_dense200,
     print_dense200_summary_table,
 )
@@ -220,6 +222,135 @@ def test_greedy_matching_preserves_legacy_iou_tie_order(
     assert matches == 1
 
 
+def test_dense200_matching_follows_gt_order_not_global_iou_order() -> None:
+    predictions = [[1.5, 0, 11.5, 10], [-2, 0, 8, 10]]
+    targets = [[0, 0, 10, 10], [2, 0, 12, 10]]
+    assert _gt_order_iou_matches(predictions, targets, 0.5) == 1
+    assert common.greedy_iou_matches(predictions, targets, 0.5) == 2
+    assert _gt_order_iou_matches(predictions, targets[::-1], 0.5) == 2
+
+
+def test_dense200_matching_keeps_first_prediction_on_iou_ties() -> None:
+    predictions = [[2, 0, 12, 10], [-2, 0, 8, 10]]
+    targets = [[0, 0, 10, 10], [2, 0, 12, 10]]
+    assert _gt_order_iou_matches(predictions, targets, 0.5) == 1
+    assert _gt_order_iou_matches(predictions[::-1], targets, 0.5) == 2
+
+
+@pytest.mark.parametrize("predictions, targets, threshold, expected", [
+    ([[1, 0, 4, 1]], [[0, 0, 3, 1]], 0.5, 1),
+    ([[0, 0, 19, 1]], [[0, 0, 20, 1]], 0.95, 1),
+    ([[0, 0, 19, 1]], [[0, 0, 20, 1]], 0.950001, 0),
+    ([], [[0, 0, 1, 1]], 0.5, 0),
+    ([[0, 0, 1, 1]], [], 0.5, 0),
+    ([], [], 0.5, 0),
+])
+def test_dense200_matching_boundaries(predictions, targets, threshold, expected) -> None:
+    assert _gt_order_iou_matches(predictions, targets, threshold) == expected
+
+
+def test_dense200_vectorized_matching_agrees_with_scalar_reference() -> None:
+    def reference(predictions, targets, threshold):
+        # Scalar GT-order matching, independent of the vectorized implementation.
+        used = set()
+        for target in targets:
+            best_iou, best_index = 0.0, None
+            for index, prediction in enumerate(predictions):
+                if index in used:
+                    continue
+                width = max(0, min(target[2], prediction[2]) - max(target[0], prediction[0]))
+                height = max(0, min(target[3], prediction[3]) - max(target[1], prediction[1]))
+                intersection = width * height
+                target_area = (target[2] - target[0]) * (target[3] - target[1])
+                pred_area = (prediction[2] - prediction[0]) * (prediction[3] - prediction[1])
+                iou = intersection / (target_area + pred_area - intersection)
+                if iou > best_iou and iou >= threshold:
+                    best_iou, best_index = iou, index
+            if best_index is not None:
+                used.add(best_index)
+        return len(used)
+
+    rng = np.random.default_rng(42)
+    for _ in range(100):
+        def boxes():
+            lower = rng.uniform(-5, 10, size=(int(rng.integers(0, 9)), 2))
+            upper = lower + rng.uniform(1, 15, size=lower.shape)
+            return np.concatenate([lower, upper], axis=1).tolist()
+
+        predictions, targets = boxes(), boxes()
+        for threshold in (0.5, 0.75, 0.95):
+            assert _gt_order_iou_matches(predictions, targets, threshold) == reference(
+                predictions, targets, threshold
+            )
+
+
+def test_dense200_aggregate_is_mean_of_threshold_f1_scores() -> None:
+    metrics, aggregate = _compute_sample_metrics([
+        {"pred_count": 1, "gt_count": 1, "tp_by_iou": {"0.50": 1, "0.95": 1}},
+        {"pred_count": 9, "gt_count": 1, "tp_by_iou": {"0.50": 1, "0.95": 0}},
+    ], [0.5, 0.95])
+    assert metrics[0.5]["F1"] == pytest.approx(5 / 7)
+    assert metrics[0.95]["F1"] == pytest.approx(0.5)
+    assert aggregate["F1"] == pytest.approx((5 / 7 + 0.5) / 2)
+    harmonic_of_mean_pr = (
+        2 * aggregate["precision"] * aggregate["recall"]
+        / (aggregate["precision"] + aggregate["recall"])
+    )
+    assert aggregate["F1"] != pytest.approx(harmonic_of_mean_pr)
+
+
+def test_dense200_empty_sample_metrics() -> None:
+    metrics, aggregate = _compute_sample_metrics([], [0.5, 0.95])
+    assert all(value == 0 for metric in metrics.values() for value in metric.values())
+    assert aggregate == {"precision": 0, "recall": 0, "F1": 0}
+    metrics, aggregate = _compute_sample_metrics([
+        {"pred_count": 0, "gt_count": 0, "tp_by_iou": {"0.50": 0}},
+    ], [0.5])
+    assert metrics[0.5]["F1"] == aggregate["F1"] == 0
+
+
+@pytest.mark.parametrize("no_result", ["missing", "failed", "max_rounds_reached", "answer"])
+def test_dense200_averages_samples_and_includes_no_result_trajectories(
+    tmp_path: Path, no_result: str,
+) -> None:
+    dataset_root = tmp_path / "Dense200"
+    image_dir = dataset_root / "dense200"
+    image_dir.mkdir(parents=True)
+    manifest, annotations, predictions = [], [], []
+    left, right = [0, 0, 2, 2], [4, 0, 6, 2]
+    for index, category in enumerate(("object", "object", "other", "object")):
+        image_path = f"dense200/sample{index}.jpg"
+        Image.new("RGB", (8, 6)).save(dataset_root / image_path)
+        item_id = f"Dense200-sample{index}-{category}"
+        manifest.append({"id": item_id, "image_path": image_path, "question": "Detect."})
+        annotations.append({"image_path": image_path, "gt": {
+            category: [left, right] if index == 0 else [left],
+        }})
+        if index == 3:
+            if no_result != "missing":
+                predictions.append(_prediction(item_id, termination_reason=no_result))
+            continue
+        box = right if index == 1 else left
+        mask = np.zeros((6, 8), dtype=np.uint8)
+        mask[box[1]:box[3], box[0]:box[2]] = 1
+        predictions.append(_prediction(item_id, box=box, mask=mask))
+    manifest_path = dataset_root / "Dense200_QA_test.json"
+    prediction_path = tmp_path / "predictions.jsonl"
+    _write_json(manifest_path, manifest)
+    _write_jsonl(dataset_root / "Dense200.jsonl", annotations)
+    _write_jsonl(prediction_path, predictions)
+    metrics = evaluate_dense200(prediction_path, manifest_path, dataset_root)
+    # Per-sample precisions [1, 0, 1, 0], recalls [1/2, 0, 1, 0].
+    assert metrics["precision@0.50"] == pytest.approx(0.5)
+    assert metrics["recall@0.50"] == pytest.approx(0.375)
+    assert metrics["F1@0.50"] == pytest.approx(3 / 7)
+    assert metrics["F1@0.95"] == pytest.approx(3 / 7)
+    assert metrics["F1@0.50:0.95"] == pytest.approx(3 / 7)
+    assert metrics["category_count"] == 2
+    assert metrics["sample_count"] == 4
+    assert metrics["status"]["missing_predictions"] == (no_result == "missing")
+
+
 def test_dense200_end_to_end_coordinate_restore(tmp_path: Path) -> None:
     dataset_root = tmp_path / "Dense200"
     image_dir = dataset_root / "dense200"
@@ -278,6 +409,8 @@ def test_dense200_end_to_end_coordinate_restore(tmp_path: Path) -> None:
     assert saved_metrics == metrics
     assert len(saved_metrics["per_threshold"]) == 10
     assert "efficiency" in saved_metrics
+    assert saved_metrics["protocol"]["name"] == "rex_omni_dense200"
+    assert "181bf00c92a5db28d4838fd5126bf0f40b598ade" in saved_metrics["protocol"]["source_url"]
     saved_sample = json.loads((tmp_path / "evaluation_per_sample.jsonl").read_text())
     assert saved_sample["id"] == "Dense200-sample-object"
     assert len(saved_sample["tp_by_iou"]) == 10
@@ -584,7 +717,7 @@ def test_print_dense200_summary_table(capsys: pytest.CaptureFixture[str]) -> Non
     lines = capsys.readouterr().out.splitlines()
     assert len(lines) == 3
     assert lines[0] == (
-        "| F1@0.50 | F1@0.95 | F1@0.50:0.95 | "
+        "| F1@0.50 | F1@0.95 | Mean F1@IoU 0.50:0.95 | "
         "Avg. Visual Tokens/Trajectory | Avg. Latency | "
         "Peak active KV memory | rollout throughput |"
     )

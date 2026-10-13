@@ -1,17 +1,21 @@
-"""Evaluate Dense200 box predictions with category-macro F1 metrics."""
+"""Evaluate Dense200 boxes using Rex-Omni's published matching/averaging rules.
+
+Match in GT order, average precision/recall across QA samples, then compute
+F1 at each IoU threshold. The aggregate is the mean of these F1 scores, not
+the harmonic mean of threshold-averaged precision/recall.
+"""
 
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
 from pathlib import Path
+from statistics import mean
 from typing import Any, Sequence
 
 import numpy as np
 
 from visharness.evaluate.common import (
     CompactPrediction,
-    greedy_iou_matches,
     load_compact_predictions,
     load_exif_transposed_image_size,
     load_manifest,
@@ -96,36 +100,67 @@ def _harmonic_f1(precision: float, recall: float) -> float:
     return 2 * precision * recall / (precision + recall) if precision + recall else 0.0
 
 
-def _compute_macro_metrics(
-    category_stats: dict[str, dict[float, dict[str, int]]],
+def _gt_order_iou_matches(
+    pred_boxes: Sequence[Sequence[float]],
+    gt_boxes: Sequence[Sequence[float]],
+    iou_threshold: float,
+) -> int:
+    """Match each GT to its best unused prediction; ties keep prediction order.
+
+    This is Rex-Omni's calculate_detection_metrics box-matching rule. Vectorize
+    each GT's IoUs without changing greedy GT order or adding an IoU epsilon.
+    The shared legacy matcher remains unchanged for other evaluation tasks.
+    """
+    if not pred_boxes or not gt_boxes:
+        return 0
+    predictions = np.asarray(pred_boxes, dtype=np.float64)
+    pred_areas = (predictions[:, 2] - predictions[:, 0]) * (
+        predictions[:, 3] - predictions[:, 1]
+    )
+    used = np.zeros(len(predictions), dtype=bool)
+    matches = 0
+    for target in gt_boxes:
+        top_left = np.maximum(predictions[:, :2], target[:2])
+        bottom_right = np.minimum(predictions[:, 2:], target[2:])
+        overlap = np.maximum(bottom_right - top_left, 0.0)
+        intersection = overlap[:, 0] * overlap[:, 1]
+        target_area = (target[2] - target[0]) * (target[3] - target[1])
+        union = pred_areas + target_area - intersection
+        ious = np.divide(
+            intersection, union, out=np.zeros_like(intersection), where=union > 0
+        )
+        ious[used] = -1.0
+        best_index = int(np.argmax(ious))
+        if ious[best_index] > 0 and ious[best_index] >= iou_threshold:
+            used[best_index] = True
+            matches += 1
+    return matches
+
+
+def _compute_sample_metrics(
+    samples: Sequence[dict[str, Any]],
     thresholds: Sequence[float],
 ) -> tuple[dict[float, dict[str, float]], dict[str, float]]:
     metrics: dict[float, dict[str, float]] = {}
     for threshold in thresholds:
-        category_precisions: list[float] = []
-        category_recalls: list[float] = []
-        for per_threshold in category_stats.values():
-            stats = per_threshold[threshold]
-            if stats["gt"] == 0:
-                continue
-            category_precisions.append(
-                stats["tp"] / stats["pred"] if stats["pred"] else 0.0
-            )
-            category_recalls.append(stats["tp"] / stats["gt"])
-        precision = float(np.mean(category_precisions)) if category_precisions else 0.0
-        recall = float(np.mean(category_recalls)) if category_recalls else 0.0
+        precisions: list[float] = []
+        recalls: list[float] = []
+        for sample in samples:
+            tp = sample["tp_by_iou"][f"{threshold:.2f}"]
+            pred_count, gt_count = sample["pred_count"], sample["gt_count"]
+            precisions.append(tp / pred_count if pred_count else 0.0)
+            recalls.append(tp / gt_count if gt_count else 0.0)
+        precision = mean(precisions) if precisions else 0.0
+        recall = mean(recalls) if recalls else 0.0
         metrics[threshold] = {
             "precision": precision,
             "recall": recall,
             "F1": _harmonic_f1(precision, recall),
         }
 
-    mean_precision = float(np.mean([metrics[t]["precision"] for t in thresholds]))
-    mean_recall = float(np.mean([metrics[t]["recall"] for t in thresholds]))
     aggregate = {
-        "precision": mean_precision,
-        "recall": mean_recall,
-        "F1": _harmonic_f1(mean_precision, mean_recall),
+        key: mean(metrics[t][key] for t in thresholds) if thresholds else 0.0
+        for key in ("precision", "recall", "F1")
     }
     return metrics, aggregate
 
@@ -152,12 +187,7 @@ def evaluate_dense200(
     expected_ids = [str(item["id"]) for item in manifest]
 
     thresholds = [round(float(value), 2) for value in np.arange(0.5, 1.0, 0.05)]
-    category_stats: dict[str, dict[float, dict[str, int]]] = defaultdict(
-        lambda: {
-            threshold: {"tp": 0, "pred": 0, "gt": 0}
-            for threshold in thresholds
-        }
-    )
+    categories: set[str] = set()
     total_predictions = 0
     total_ground_truth = 0
     per_sample: list[dict[str, Any]] = []
@@ -169,6 +199,7 @@ def evaluate_dense200(
         gt_data = ground_truth[item_id]
         gt_boxes = gt_data["boxes"]
         category = gt_data["category"]
+        categories.add(category)
 
         image_path = resolve_image_path(
             manifest_item,
@@ -186,10 +217,7 @@ def evaluate_dense200(
 
         per_threshold_tp: dict[str, int] = {}
         for threshold in thresholds:
-            true_positives = greedy_iou_matches(pred_boxes, gt_boxes, threshold)
-            category_stats[category][threshold]["tp"] += true_positives
-            category_stats[category][threshold]["pred"] += len(pred_boxes)
-            category_stats[category][threshold]["gt"] += len(gt_boxes)
+            true_positives = _gt_order_iou_matches(pred_boxes, gt_boxes, threshold)
             per_threshold_tp[f"{threshold:.2f}"] = true_positives
 
         total_predictions += len(pred_boxes)
@@ -209,11 +237,11 @@ def evaluate_dense200(
             }
         )
 
-    threshold_metrics, mean_metrics = _compute_macro_metrics(category_stats, thresholds)
+    threshold_metrics, mean_metrics = _compute_sample_metrics(per_sample, thresholds)
     metrics = {
         "task": "Dense200",
         "sample_count": len(manifest),
-        "category_count": len(category_stats),
+        "category_count": len(categories),
         "total_predictions": total_predictions,
         "total_ground_truth": total_ground_truth,
         "F1@0.50": threshold_metrics[0.5]["F1"],
@@ -227,6 +255,20 @@ def evaluate_dense200(
         "recall@0.50:0.95": mean_metrics["recall"],
         "per_threshold": {
             f"{threshold:.2f}": threshold_metrics[threshold] for threshold in thresholds
+        },
+        "protocol": {
+            "name": "rex_omni_dense200",
+            "source_url": (
+                "https://github.com/IDEA-Research/Rex-Omni/blob/"
+                "181bf00c92a5db28d4838fd5126bf0f40b598ade/"
+                "evaluation/metrics/other_metric.py"
+            ),
+            "matching": "GT-order greedy matching; prediction-order IoU ties",
+            "averaging": (
+                "Mean precision and recall across QA samples, then harmonic F1 "
+                "at each threshold; mean F1 across IoU 0.50:0.05:0.95"
+            ),
+            "units": "fractions in [0, 1]; multiply by 100 for paper tables",
         },
         "status": prediction_status_summary(expected_ids, predictions, load_report),
         "efficiency": summarize_efficiency_metrics(
@@ -301,7 +343,7 @@ def print_dense200_summary_table(metrics: dict[str, Any]) -> None:
     headers = (
         "F1@0.50",
         "F1@0.95",
-        "F1@0.50:0.95",
+        "Mean F1@IoU 0.50:0.95",
         "Avg. Visual Tokens/Trajectory",
         "Avg. Latency",
         "Peak active KV memory",
