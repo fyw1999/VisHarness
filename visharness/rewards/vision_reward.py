@@ -374,7 +374,12 @@ def _offline_aligned_eval_metrics(
         pred_count = len(pred_boxes)
         absolute_error = abs(pred_count - gt_count)
         squared_error = (pred_count - gt_count) ** 2
-        true_positives = int(_localization_matches(pred_boxes, gt_points))
+        true_positives = _localization_matches(
+            pred_boxes,
+            gt_points,
+            original_width=original_width,
+            original_height=original_height,
+        )
         if gt_count == 0:
             eval_reward = max(-3.0, 5.0 - pred_count * 2.0)
         else:

@@ -26,6 +26,21 @@ from visharness.evaluate.common import (
 )
 
 
+REC8K_LOCALIZATION_PROTOCOL = {
+    "name": "CVPR2024_REC_official_localization",
+    "source_url": (
+        "https://github.com/sydai/referring-expression-counting/blob/"
+        "e8f5a54f295fd7443665b5c70499e5a85bccc0e4/train_test.py"
+    ),
+    "coordinates": "x/width, y/height; normalized cxcywh boxes",
+    "gt_dtype": "float32",
+    "matching": "Hungarian minimum total Euclidean distance",
+    "threshold": "half diagonal of area-sorted predicted box at index N//2",
+    "acceptance": "distance < threshold (strict)",
+    "aggregation": "dataset-wide TP/FP/FN (micro)",
+}
+
+
 def _load_json_object(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(path)
@@ -89,53 +104,55 @@ def _restore_prediction_boxes(
 def _localization_matches(
     pred_boxes: Sequence[Sequence[float]],
     gt_points: Sequence[Sequence[float]],
+    *,
+    original_width: int,
+    original_height: int,
 ) -> int:
-    """Preserve the legacy REC-8K Hungarian/sigma matching rule."""
+    """Match original-pixel xyxy boxes using the REC authors' normalized rule.
+
+    Mirror prepare_targets, distance_threshold_func and calc_loc_metric in
+    train_test.py. Preserve actual empty annotations instead of inventing GT;
+    the official REC-8K val/test splits contain no empty-target samples.
+    """
 
     if not pred_boxes or not gt_points:
         return 0
+    if original_width <= 0 or original_height <= 0:
+        raise ValueError("Original image dimensions must be positive for REC-8K localization")
 
-    pred_points: list[list[float]] = []
-    widths: list[float] = []
-    heights: list[float] = []
+    normalized_boxes: list[list[float]] = []
     for box in pred_boxes:
         x1, y1, x2, y2 = map(float, box)
         width = x2 - x1
         height = y2 - y1
-        if width <= 0 or height <= 0:
+        if not np.all(np.isfinite([x1, y1, x2, y2])) or width <= 0 or height <= 0:
             raise ValueError(f"Prediction box has non-positive area: {box}")
-        pred_points.append([x1 + width / 2.0, y1 + height / 2.0])
-        widths.append(width)
-        heights.append(height)
+        normalized_boxes.append(
+            [
+                (x1 + x2) / (2.0 * original_width),
+                (y1 + y2) / (2.0 * original_height),
+                width / original_width,
+                height / original_height,
+            ]
+        )
 
     gt_array = np.asarray(gt_points, dtype=np.float64)
     if gt_array.ndim != 2 or gt_array.shape[1] != 2 or not np.all(np.isfinite(gt_array)):
         raise ValueError(f"REC-8K GT points must have shape [N, 2], got {gt_array.shape}")
 
-    areas = np.asarray(widths) * np.asarray(heights)
-    sorted_indices = np.argsort(areas)
-    count = len(pred_boxes)
-    if count % 2 == 1:
-        median_index = sorted_indices[count // 2]
-        sigma = np.hypot(widths[median_index], heights[median_index]) / 2.0
-    else:
-        first = sorted_indices[count // 2 - 1]
-        second = sorted_indices[count // 2]
-        sigma = (
-            np.hypot(widths[first], heights[first])
-            + np.hypot(widths[second], heights[second])
-        ) / 4.0
+    gt_array = (gt_array / np.array([original_width, original_height])).astype(np.float32)
+    areas = [box[2] * box[3] for box in normalized_boxes]
+    median_box = normalized_boxes[np.argsort(areas)[len(areas) // 2]]
+    width, height = median_box[2:]
+    sigma = np.sqrt(width**2 + height**2) / 2.0
 
     distance_matrix = cdist(
-        np.asarray(pred_points, dtype=np.float64),
+        np.array([box[:2] for box in normalized_boxes]),
         gt_array,
         metric="euclidean",
     )
     row_indices, column_indices = linear_sum_assignment(distance_matrix)
-    return sum(
-        distance_matrix[row_index, column_index] <= sigma
-        for row_index, column_index in zip(row_indices, column_indices)
-    )
+    return int(np.count_nonzero(distance_matrix[row_indices, column_indices] < sigma))
 
 
 def evaluate_rec8k(
@@ -203,7 +220,12 @@ def evaluate_rec8k(
         pred_count = len(pred_boxes)
         absolute_error = abs(pred_count - gt_count)
         squared_error = (pred_count - gt_count) ** 2
-        true_positives = int(_localization_matches(pred_boxes, gt_points))
+        true_positives = _localization_matches(
+            pred_boxes,
+            gt_points,
+            original_width=original_width,
+            original_height=original_height,
+        )
         false_positives = pred_count - true_positives
         false_negatives = gt_count - true_positives
 
@@ -249,6 +271,7 @@ def evaluate_rec8k(
         "TP": global_tp,
         "FP": global_fp,
         "FN": global_fn,
+        "localization_protocol": dict(REC8K_LOCALIZATION_PROTOCOL),
         "status": prediction_status_summary(expected_ids, predictions, load_report),
         "efficiency": summarize_efficiency_metrics(
             expected_ids,
