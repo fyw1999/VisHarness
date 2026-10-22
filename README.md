@@ -771,3 +771,9 @@ Our RL-trained model is available at
 [VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550](https://huggingface.co/fyw1999/VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550).
 This checkpoint was selected for its highest average reward on the validation
 set and can be downloaded directly for inference.
+
+# Inference after RL
+
+Follow the steps in [Inference after SFT](#inference-after-sft), replacing the
+SFT model path with the RL checkpoint path and updating the corresponding
+parameters.
