@@ -55,7 +55,7 @@ DETECTION_TEMPLATES = (
     "Identify the position of every {phrase}.",
     "Find the {phrase}.",
 )
-DATASET_DIRS = {"gres": "GRES", "reasonseg": "ReasonSeg", "rec8k": "REC-8K", "dense200": "Dense200"}
+DATASETS = ("gres", "reasonseg", "rec8k", "dense200")
 
 
 def _read_json(path: Path) -> Any:
@@ -244,39 +244,72 @@ def _build_reasonseg_seed(root: Path, seed: int) -> list[dict[str, Any]]:
     return records
 
 
-def build_seed_manifests(data_root: Path, seed: int = 42) -> dict[str, list[dict[str, Any]]]:
+def build_seed_manifests(
+    *,
+    gres_data_root: Path,
+    rec8k_data_root: Path,
+    reasonseg_data_root: Path,
+    seed: int = 42,
+) -> dict[str, list[dict[str, Any]]]:
     return {
-        "GRES_QA_train.json": _build_gres_seed(data_root / "GRES", seed),
-        "REC8K_QA_train.json": _build_rec8k_seed(data_root / "REC-8K", seed),
-        "ReasonSeg_QA_train.json": _build_reasonseg_seed(data_root / "ReasonSeg", seed),
+        "GRES_QA_train.json": _build_gres_seed(gres_data_root, seed),
+        "REC8K_QA_train.json": _build_rec8k_seed(rec8k_data_root, seed),
+        "ReasonSeg_QA_train.json": _build_reasonseg_seed(reasonseg_data_root, seed),
     }
 
 
-def _seed_image_source(data_root: Path, relative_path: str) -> Path:
+def _seed_image_source(source_roots: dict[str, Path], relative_path: str) -> Path:
     name = Path(relative_path).name
     if name.startswith("GRES-"):
-        return data_root / "GRES/images/train2014" / name.removeprefix("GRES-")
+        return source_roots["gres"] / "images/train2014" / name.removeprefix("GRES-")
     if name.startswith("REC8K-"):
-        return data_root / "REC-8K/images" / name.removeprefix("REC8K-")
+        return source_roots["rec8k"] / "images" / name.removeprefix("REC8K-")
     if name.startswith("ReasonSeg-"):
-        return data_root / "ReasonSeg/train" / name.removeprefix("ReasonSeg-")
+        return source_roots["reasonseg"] / "train" / name.removeprefix("ReasonSeg-")
     raise ValueError(f"Unknown seed image prefix: {relative_path}")
 
 
 def prepare_dataset(
-    data_root: Path,
     dataset: str,
     *,
+    gres_data_root: Path | None = None,
+    reasonseg_data_root: Path | None = None,
+    rec8k_data_root: Path | None = None,
+    dense200_data_root: Path | None = None,
+    output_dir: Path | None = None,
     seed: int = 42,
     overwrite: bool = False,
 ) -> list[Path]:
-    """Validate inputs before writing; existing unequal outputs require opt-in."""
+    """Prepare QA files from explicit dataset roots; never assume a shared parent."""
+    if dataset not in (*DATASETS, "seed"):
+        raise ValueError(f"Unknown dataset: {dataset}")
+    source_roots = {
+        name: path for name, path in {
+            "gres": gres_data_root,
+            "reasonseg": reasonseg_data_root,
+            "rec8k": rec8k_data_root,
+            "dense200": dense200_data_root,
+        }.items() if path is not None
+    }
+    required = ("gres", "rec8k", "reasonseg") if dataset == "seed" else (dataset,)
+    missing = [f"--{name}-data-root" for name in required if name not in source_roots]
+    if dataset == "seed" and output_dir is None:
+        missing.append("--output-dir")
+    if missing:
+        raise ValueError(f"--dataset {dataset} requires {', '.join(missing)}")
+    if dataset != "seed" and output_dir is not None:
+        raise ValueError("--output-dir is only supported with --dataset seed")
+
     if dataset == "seed":
-        manifests = build_seed_manifests(data_root, seed)
-        destination = data_root / "VisHarness-4K"
-        source_root = None
+        manifests = build_seed_manifests(
+            gres_data_root=source_roots["gres"],
+            rec8k_data_root=source_roots["rec8k"],
+            reasonseg_data_root=source_roots["reasonseg"],
+            seed=seed,
+        )
+        destination = output_dir
     else:
-        source_root = data_root / DATASET_DIRS[dataset]
+        source_root = source_roots[dataset]
         builder = {
             "gres": build_gres_manifests,
             "reasonseg": build_reasonseg_manifests,
@@ -284,7 +317,7 @@ def prepare_dataset(
             "dense200": build_dense200_manifests,
         }[dataset]
         manifests = builder(source_root)
-        destination = data_root / DATASET_DIRS[dataset]
+        destination = source_root
 
     copy_jobs: dict[Path, Path] = {}
     for filename, records in manifests.items():
@@ -297,8 +330,8 @@ def prepare_dataset(
             raise FileExistsError(f"Different manifest already exists: {output_path}; pass --overwrite to replace it")
         for record in records:
             source = (
-                _seed_image_source(data_root, record["image_path"])
-                if source_root is None else source_root / record["image_path"]
+                _seed_image_source(source_roots, record["image_path"])
+                if dataset == "seed" else source_root / record["image_path"]
             )
             if not source.is_file():
                 raise FileNotFoundError(source)
@@ -327,12 +360,37 @@ def prepare_dataset(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-root", type=Path, required=True, help="Parent directory of GRES, ReasonSeg, REC-8K, and Dense200")
-    parser.add_argument("--dataset", choices=(*DATASET_DIRS, "seed"), required=True)
+    parser.add_argument("--dataset", choices=(*DATASETS, "seed"), required=True)
+    for dataset in DATASETS:
+        parser.add_argument(
+            f"--{dataset}-data-root", type=Path,
+            help=f"Root of {dataset}, containing its original annotations and images",
+        )
+    parser.add_argument(
+        "--output-dir", type=Path,
+        help="Destination for the VisHarness-4K seed pool (required with --dataset seed)",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--overwrite", action="store_true", help="Replace existing outputs only when their contents differ")
     args = parser.parse_args()
-    prepare_dataset(args.data_root, args.dataset, seed=args.seed, overwrite=args.overwrite)
+    required = ("gres", "rec8k", "reasonseg") if args.dataset == "seed" else (args.dataset,)
+    missing = [
+        f"--{name}-data-root"
+        for name in required if getattr(args, f"{name}_data_root") is None
+    ]
+    if args.dataset == "seed" and args.output_dir is None:
+        missing.append("--output-dir")
+    if missing:
+        parser.error(f"--dataset {args.dataset} requires {', '.join(missing)}")
+    if args.dataset != "seed" and args.output_dir is not None:
+        parser.error("--output-dir is only supported with --dataset seed")
+    prepare_dataset(
+        args.dataset,
+        **{f"{name}_data_root": getattr(args, f"{name}_data_root") for name in DATASETS},
+        output_dir=args.output_dir,
+        seed=args.seed,
+        overwrite=args.overwrite,
+    )
 
 
 if __name__ == "__main__":

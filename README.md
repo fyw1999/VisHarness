@@ -115,25 +115,26 @@ dataset and does not require the visual expert service.
 # Data Preparation
 
 Run the following commands from the repository root.
+Each dataset can be stored independently; pass its own root directory below.
 
 ## GRES / gRefCOCO
 
 - Download `grefs(unc).json` and `instances.json` from the
   [gRefCOCO release](https://huggingface.co/datasets/FudanCVL/gRefCOCO/tree/main)
-  into `/path/to/datasets/GRES/grefcoco/`.
+  into `/path/to/GRES/grefcoco/`.
 - Download `train2014.zip` from [COCO](https://cocodataset.org/#download)
-  and extract it into `/path/to/datasets/GRES/images/` to create `images/train2014/`.
+  and extract it into `/path/to/GRES/images/` to create `images/train2014/`.
 
 Generate `GRES_QA_val.json`, `GRES_QA_testA.json`, and `GRES_QA_testB.json`:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset gres
+python -m visharness.data.prepare_qa_data --dataset gres --gres-data-root /path/to/GRES
 ```
 
 Final layout:
 
 ```text
-/path/to/datasets/GRES/
+/path/to/GRES/
 ├── grefcoco/
 │   ├── grefs(unc).json
 │   └── instances.json
@@ -150,19 +151,19 @@ Final layout:
 
 Download the ReasonSeg `train`, `val`, and `test` splits from the
 [LISA dataset release](https://github.com/JIA-Lab-research/LISA#dataset)
-and extract them into `/path/to/datasets/ReasonSeg/`, keeping each image and its
+and extract them into `/path/to/ReasonSeg/`, keeping each image and its
 same-stem JSON annotation together.
 
 Generate `ReasonSeg_QA_val.json` and `ReasonSeg_QA_test.json`:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset reasonseg
+python -m visharness.data.prepare_qa_data --dataset reasonseg --reasonseg-data-root /path/to/ReasonSeg
 ```
 
 Final layout:
 
 ```text
-/path/to/datasets/ReasonSeg/
+/path/to/ReasonSeg/
 ├── train/
 │   ├── <image_id>.jpg
 │   ├── <image_id>.json
@@ -183,17 +184,17 @@ Final layout:
 
 Download `anno.zip` from the
 [official Referring Expression Counting repository](https://github.com/sydai/referring-expression-counting#dataset-download)
-and extract `annotations.json` and `splits.json` into `/path/to/datasets/REC-8K/`.
+and extract `annotations.json` and `splits.json` into `/path/to/REC-8K/`.
 Download the source images listed there, run the official `data_preprocess.py`,
-and place the resulting images in `/path/to/datasets/REC-8K/images/`.
+and place the resulting images in `/path/to/REC-8K/images/`.
 
 Alternatively, download our prepared [REC-8K images](https://huggingface.co/datasets/fyw1999/REC-8K-Images)
 and extract the archive:
 
 ```bash
-mkdir -p /path/to/datasets/REC-8K
-wget -c https://huggingface.co/datasets/fyw1999/REC-8K-Images/resolve/main/REC8K_images.tar.gz -O /path/to/datasets/REC-8K/REC8K_images.tar.gz
-tar -xzf /path/to/datasets/REC-8K/REC8K_images.tar.gz -C /path/to/datasets/REC-8K
+mkdir -p /path/to/REC-8K
+wget -c https://huggingface.co/datasets/fyw1999/REC-8K-Images/resolve/main/REC8K_images.tar.gz -O /path/to/REC-8K/REC8K_images.tar.gz
+tar -xzf /path/to/REC-8K/REC8K_images.tar.gz -C /path/to/REC-8K
 ```
 
 This download link is provided solely to make reproducing this project faster
@@ -203,13 +204,13 @@ original source datasets. All image rights remain with their respective owners.
 Generate `REC8K_QA_val.json` and `REC8K_QA_test.json`:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset rec8k
+python -m visharness.data.prepare_qa_data --dataset rec8k --rec8k-data-root /path/to/REC-8K
 ```
 
 Final layout:
 
 ```text
-/path/to/datasets/REC-8K/
+/path/to/REC-8K/
 ├── annotations.json
 ├── splits.json
 ├── images/
@@ -222,20 +223,20 @@ Final layout:
 ## Dense200
 
 - Download [dense200.tar.gz](https://huggingface.co/datasets/Mountchicken/Rex-Omni-EvalData/blob/main/dense200.tar.gz)
-  and extract the images into `/path/to/datasets/Dense200/dense200/`.
+  and extract the images into `/path/to/Dense200/dense200/`.
 - Download [Dense200.jsonl](https://huggingface.co/datasets/Mountchicken/Rex-Omni-EvalData/blob/main/_annotations/box_eval/Dense200.jsonl)
-  into `/path/to/datasets/Dense200/`.
+  into `/path/to/Dense200/`.
 
 Generate `Dense200_QA_test.json`:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset dense200
+python -m visharness.data.prepare_qa_data --dataset dense200 --dense200-data-root /path/to/Dense200
 ```
 
 Final layout:
 
 ```text
-/path/to/datasets/Dense200/
+/path/to/Dense200/
 ├── Dense200.jsonl
 ├── dense200/
 │   ├── <image_filename>.jpg
@@ -246,16 +247,21 @@ Final layout:
 ## VisHarness-4K training seed pool
 
 After preparing GRES, ReasonSeg, and REC-8K, generate the three training QA
-files and copy their images into `/path/to/datasets/VisHarness-4K/`:
+files and copy their images into the specified output directory:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset seed --seed 42
+python -m visharness.data.prepare_qa_data --dataset seed \
+  --gres-data-root /path/to/GRES \
+  --reasonseg-data-root /path/to/ReasonSeg \
+  --rec8k-data-root /path/to/REC-8K \
+  --output-dir /path/to/VisHarness-4K \
+  --seed 42
 ```
 
 Final layout:
 
 ```text
-/path/to/datasets/VisHarness-4K/
+/path/to/VisHarness-4K/
 ├── GRES_QA_train.json      # 1,600 image-text pairs
 ├── REC8K_QA_train.json     # 2,660 image-text pairs
 ├── ReasonSeg_QA_train.json #   239 image-text pairs
@@ -266,7 +272,7 @@ Final layout:
     └── ...
 ```
 
-Use `/path/to/datasets/VisHarness-4K` as `dataset_args.dataset_path` for SFT data
+Use `/path/to/VisHarness-4K` as `dataset_args.dataset_path` for SFT data
 generation and as `--source-root` when preparing RL data.
 
 # SFT Data Generation
@@ -303,7 +309,7 @@ set `save_path` to the path where the generated results should be saved:
 
 ```yaml
 dataset_args:
-  dataset_path: /path/to/datasets/VisHarness-4K
+  dataset_path: /path/to/VisHarness-4K
   save_path: training_data/SFT/Kimi-K2.5-VisHarness-4K
   resume_from_ckpt:
 ```
@@ -613,7 +619,7 @@ manifests. Generate the training parquet from the project root:
 
 ```bash
 python visharness/data/prepare_verl_data.py \
-  --source-root /path/to/datasets/VisHarness-4K \
+  --source-root /path/to/VisHarness-4K \
   --rec8k-anno-path /path/to/REC-8K/annotations.json \
   --gres-data-root /path/to/GRES \
   --reasonseg-data-root /path/to/ReasonSeg/train \
@@ -643,7 +649,7 @@ python -m visharness.data.prepare_official_validation \
   --rec8k-data-root /path/to/REC-8K \
   --gres-data-root /path/to/GRES \
   --reasonseg-data-root /path/to/ReasonSeg \
-  --train-manifest-root /path/to/datasets/VisHarness-4K \
+  --train-manifest-root /path/to/VisHarness-4K \
   --output-dir training_data/GRPO/verl_visharness_official_val \
   --samples-per-task 100 \
   --seed 42 \
