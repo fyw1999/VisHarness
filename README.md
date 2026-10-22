@@ -35,11 +35,6 @@ the tool controller, and the two local CPU tools. The GPU-backed visual experts
 use isolated environments because their model stacks have different Python and
 runtime requirements.
 
-The tested main stack is vLLM 0.24.0 with PyTorch 2.11.0 (CUDA 12.9).
-The setup script temporarily updates only verl's package dependency declarations
-for this stack, then restores the submodule; it does not change verl's training
-implementation. Use this script rather than installing the YAML directly.
-
 ## Step 3: create the visual expert environments
 
 Create all three expert environments with:
@@ -49,7 +44,7 @@ bash environment/create_expert_envs.sh
 ```
 
 The script creates `Molmo`, `SAM`, and `SuperResolution` from the versioned
-files under `environment/experts/`. Existing environments are left unchanged.
+files under `environment/experts/`.
 Model checkpoints are not downloaded by these environment files and must be
 configured separately as described below.
 
