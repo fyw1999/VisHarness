@@ -756,10 +756,14 @@ MODEL_PATH="${MODEL_PATH:-${PROJECT_ROOT}/checkpoints/sft/Qwen3-VL-8B-Thinking/<
 EXPERIMENT_NAME="${EXPERIMENT_NAME:-my-visharness-grpo-run}"
 ```
 
-The launcher derives the checkpoint and validation-output directories from
-`EXPERIMENT_NAME`. After the visual expert services are running and these
+After the visual expert services are running and these
 parameters have been configured, start RL training from the project root:
 
 ```bash
 bash recipe/visharness/scripts/rl/train_visharness.sh
 ```
+
+Our RL-trained model is available at
+[VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550](https://huggingface.co/fyw1999/VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550).
+This checkpoint was selected for its highest average reward on the validation
+set and can be downloaded directly for inference.
