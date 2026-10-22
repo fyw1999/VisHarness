@@ -521,6 +521,10 @@ and see what the data looks like during SFT training:
 python scripts/debug_swift_sft.py
 ```
 
+Our SFT-trained model is available at
+[VisHarness-SFT-Qwen3-VL-8B-Thinking](https://huggingface.co/fyw1999/VisHarness-SFT-Qwen3-VL-8B-Thinking).
+Download it to run the inference steps below without training the model yourself.
+
 # Inference after SFT
 
 ## Step 1: deploy the SFT model with vLLM
