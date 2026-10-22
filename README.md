@@ -68,6 +68,8 @@ bash environment/create_expert_envs.sh
 
 The script creates `Molmo`, `SAM`, and `SuperResolution` from the versioned
 files under `environment/experts/`.
+It also applies the BasicSR/TorchVision compatibility fix in `SuperResolution`
+and verifies that BasicSR, GFPGAN, and Real-ESRGAN can be imported.
 Model checkpoints are not downloaded by these environment files and must be
 configured separately as described below.
 
@@ -90,12 +92,21 @@ model or processing backend used by each expert or tool is summarized below:
 | `PhraseToPoint` | [Molmo2-4B](https://huggingface.co/allenai/Molmo2-4B) | Returns the center points of all objects matching a complex text description, including attributes, relative positions, and other constraints. |
 | `PhraseToBoxMask` | [SAM 3](https://huggingface.co/facebook/sam3) (`sam3.pt`) | Returns bounding boxes and masks for all objects matching a simple noun-phrase description. |
 | `PointToBoxMask` | [SAM 3](https://huggingface.co/facebook/sam3) (`sam3.pt`) | Converts supplied center points into object bounding boxes and masks. |
-| `SuperResolution` | [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) (`realesr-general-x4v3`) with [GFPGAN](https://github.com/TencentARC/GFPGAN) v1.3 face enhancement | Produces 4x super-resolved images and restores detected faces. |
+| `SuperResolution` | [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) with [GFPGAN](https://github.com/TencentARC/GFPGAN) v1.3 face enhancement | Produces 4x super-resolved images and restores detected faces. |
 | `SplitImageIntoPatches` | Deterministic CPU processing; no learned model | Splits an image into overlapping patches so that small targets occupy a larger proportion of each relevant patch, and produces an overview. |
 | `MergeBoxMask` | Rule-based CPU geometry and mask processing; no learned model | Merges results from different patches and maps the final bounding boxes and masks back to their locations in the original image. |
 
+For `SuperResolution`, download all three weight files into the same directory:
+
+- `realesr-general-x4v3.pth`
+- `realesr-general-wdn-x4v3.pth`
+- `GFPGANv1.3.pth`
+
 After downloading the model checkpoints, set the corresponding `model-path`
 values in `tool_server/tool_workers/scripts/launch_scripts/config/remote_tools.yaml`.
+For `SuperResolution`, set `model-path` to the full path of
+`realesr-general-x4v3.pth`; the worker loads the other two files from the same
+directory.
 The provided `Molmo`, `SAM`, and `SuperResolution` environments match the
 default `conda_env` values in that file. If custom environment names are used,
 update the corresponding values before launching the workers.
@@ -129,6 +140,16 @@ forwarding in advance so that the visual expert model processes and the controll
 process can reach each other over the network. For example, the two servers can
 be connected and the required ports forwarded through
 [Tailscale](https://tailscale.com/).
+
+On first startup, `SuperResolution` may also download auxiliary face-detection
+and face-parsing weights into `tool_server/tool_workers/gfpgan/weights/` on the
+worker server. Wait for these downloads and model initialization to finish.
+
+Before proceeding, inspect the controller log and every configured visual
+expert and tool worker log under `tool_server/tool_workers/logs/server_log/`
+on each server. Confirm that there are no errors, all models have fully
+initialized, and every service is ready to accept requests. A process being
+started does not mean that model initialization is complete.
 
 Keep the controller, local tools, and remote visual expert workers running
 throughout SFT data generation, inference, and RL training, because all three
