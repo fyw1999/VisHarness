@@ -119,30 +119,27 @@ dataset and does not require the visual expert service.
 
 # Data Preparation
 
-Download the original images and annotations before generating SFT trajectories
-or preparing RL and evaluation data. GRES, ReasonSeg, and REC-8K provide the
-training seed examples; Dense200 is used only for evaluation. Keep the original
-annotations: trajectory filtering, RL rewards, and evaluation read ground truth
-from these files, not from the QA manifests.
+Run the commands below from the repository root, with all datasets under:
 
-The examples below use `/path/to/datasets` as the common data root. The
-`*_QA_*.json` files are separate VisHarness manifests, not files included in the
-original dataset downloads. They are marked as prepared manifests in the layouts
-below; downloading the source datasets alone does not create them.
+```bash
+export DATA_ROOT=/path/to/datasets
+```
 
 ## GRES / gRefCOCO
 
-Download the following:
+- Download `grefs(unc).json` and `instances.json` from the
+  [gRefCOCO release](https://huggingface.co/datasets/FudanCVL/gRefCOCO/tree/main)
+  into `$DATA_ROOT/GRES/grefcoco/`.
+- Download `train2014.zip` from [COCO](https://cocodataset.org/#download)
+  and extract it into `$DATA_ROOT/GRES/images/` to create `images/train2014/`.
 
-- `grefs(unc).json` and `instances.json` from the
-  [gRefCOCO annotation release](https://huggingface.co/datasets/FudanCVL/gRefCOCO/tree/main).
-- The COCO 2014 training images (`train2014.zip`) from the
-  [COCO download page](https://cocodataset.org/#download). All gRefCOCO splits
-  use this image collection; a separate COCO validation/test image download is
-  not needed for gRefCOCO.
+Generate `GRES_QA_val.json`, `GRES_QA_testA.json`, and `GRES_QA_testB.json`:
 
-See the [gRefCOCO dataset instructions](https://github.com/henghuiding/gRefCOCO#usage)
-for the source data requirements. Organize the files as follows:
+```bash
+python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset gres
+```
+
+Final layout:
 
 ```text
 /path/to/datasets/GRES/
@@ -153,24 +150,25 @@ for the source data requirements. Organize the files as follows:
 │   └── train2014/
 │       ├── COCO_train2014_000000000009.jpg
 │       └── ...
-├── GRES_QA_val.json       # prepared VisHarness manifest
-├── GRES_QA_testA.json     # prepared VisHarness manifest
-└── GRES_QA_testB.json     # prepared VisHarness manifest
+├── GRES_QA_val.json
+├── GRES_QA_testA.json
+└── GRES_QA_testB.json
 ```
-
-Use `images/train2014/COCO_train2014_*.jpg` as the image paths in GRES QA
-manifests. Keep only this image directory; a second `GRES/train2014` directory
-or symlink is not needed. Image-loading entry points also resolve legacy
-`train2014/...` paths from older manifests or checkpoints to this directory
-when the canonical image exists.
 
 ## ReasonSeg
 
-Download and extract the original ReasonSeg `train`, `val`, and `test` splits
-from the [LISA dataset release](https://github.com/JIA-Lab-research/LISA#dataset).
-Each image must retain its same-stem JSON annotation, which contains the text
-descriptions and target/ignore polygons. The raw training split contains
-239 image-annotation pairs.
+Download the ReasonSeg `train`, `val`, and `test` splits from the
+[LISA dataset release](https://github.com/JIA-Lab-research/LISA#dataset)
+and extract them into `$DATA_ROOT/ReasonSeg/`, keeping each image and its
+same-stem JSON annotation together.
+
+Generate `ReasonSeg_QA_val.json` and `ReasonSeg_QA_test.json`:
+
+```bash
+python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset reasonseg
+```
+
+Final layout:
 
 ```text
 /path/to/datasets/ReasonSeg/
@@ -186,22 +184,25 @@ descriptions and target/ignore polygons. The raw training split contains
 │   ├── <image_id>.jpg
 │   ├── <image_id>.json
 │   └── ...
-├── ReasonSeg_QA_val.json  # prepared VisHarness manifest
-└── ReasonSeg_QA_test.json # prepared VisHarness manifest
+├── ReasonSeg_QA_val.json
+└── ReasonSeg_QA_test.json
 ```
-
-Pass the dataset root to validation-data preparation. For training rewards
-and SFT trajectory filtering, pass its `train` subdirectory where requested.
 
 ## REC-8K
 
 Download `anno.zip` from the
 [official Referring Expression Counting repository](https://github.com/sydai/referring-expression-counting#dataset-download)
-and retain `annotations.json` and `splits.json`. The images come from several
-source datasets, so the annotation archive alone is not sufficient. Follow the
-authors' source-image download instructions and run their `data_preprocess.py`
-to extract and rename the REC-8K images. Place the resulting image collection
-under `REC-8K/images/` without changing the filenames used in the annotations.
+and extract `annotations.json` and `splits.json` into `$DATA_ROOT/REC-8K/`.
+Download the source images listed there, run the official `data_preprocess.py`,
+and place the resulting images in `$DATA_ROOT/REC-8K/images/`.
+
+Generate `REC8K_QA_val.json` and `REC8K_QA_test.json`:
+
+```bash
+python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset rec8k
+```
+
+Final layout:
 
 ```text
 /path/to/datasets/REC-8K/
@@ -210,22 +211,24 @@ under `REC-8K/images/` without changing the filenames used in the annotations.
 ├── images/
 │   ├── 0000-fsc147-1106.jpg
 │   └── ...
-├── REC8K_QA_val.json      # prepared VisHarness manifest
-└── REC8K_QA_test.json     # prepared VisHarness manifest
+├── REC8K_QA_val.json
+└── REC8K_QA_test.json
 ```
-
-Use the complete official validation and test splits for evaluation. The
-training-only frame filtering used to build the seed pool must not be applied
-to these evaluation splits.
 
 ## Dense200
 
-Download both the
-[Dense200 images (`dense200.tar.gz`)](https://huggingface.co/datasets/Mountchicken/Rex-Omni-EvalData/blob/main/dense200.tar.gz)
-and the
-[box annotations (`Dense200.jsonl`)](https://huggingface.co/datasets/Mountchicken/Rex-Omni-EvalData/blob/main/_annotations/box_eval/Dense200.jsonl)
-from the Rex-Omni evaluation-data release. Extract the images into `dense200/`
-and place the annotation file directly under the dataset root:
+- Download [dense200.tar.gz](https://huggingface.co/datasets/Mountchicken/Rex-Omni-EvalData/blob/main/dense200.tar.gz)
+  and extract the images into `$DATA_ROOT/Dense200/dense200/`.
+- Download [Dense200.jsonl](https://huggingface.co/datasets/Mountchicken/Rex-Omni-EvalData/blob/main/_annotations/box_eval/Dense200.jsonl)
+  into `$DATA_ROOT/Dense200/`.
+
+Generate `Dense200_QA_test.json`:
+
+```bash
+python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset dense200
+```
+
+Final layout:
 
 ```text
 /path/to/datasets/Dense200/
@@ -233,19 +236,19 @@ and place the annotation file directly under the dataset root:
 ├── dense200/
 │   ├── <image_filename>.jpg
 │   └── ...
-└── Dense200_QA_test.json  # prepared VisHarness manifest
+└── Dense200_QA_test.json
 ```
 
-Preserve the original image filenames and extensions so that the `image_path`
-entries in `Dense200.jsonl` resolve correctly. Dense200 is not included in the
-SFT or RL training seed pool.
+## Training seed pool
 
-## VisHarness QA manifests and training seed pool
+After preparing GRES, ReasonSeg, and REC-8K, generate the three training QA
+files and copy their images into `$DATA_ROOT/VisionAgent-4K/`:
 
-Each QA manifest is a JSON list of records containing `id`, `image_path`, and
-`question`. Relative image paths are resolved from the corresponding dataset
-root. Evaluation manifests follow the official splits; the training manifests
-are collected separately under `VisionAgent-4K`:
+```bash
+python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset seed --seed 42
+```
+
+Final layout:
 
 ```text
 /path/to/datasets/VisionAgent-4K/
@@ -259,13 +262,8 @@ are collected separately under `VisionAgent-4K`:
     └── ...
 ```
 
-This pool contains 4,499 training image-text pairs, not teacher trajectories.
-Use it as `dataset_args.dataset_path` for SFT data generation and as
-`--source-root` when building the RL training parquet. Keep validation/test
-QA manifests in their source dataset directories, not in this training pool.
-The prepared QA manifests and seed pool are separate release artifacts, as
-noted in the project status above; this section documents their expected
-locations and does not provide a QA-conversion command.
+Use `$DATA_ROOT/VisionAgent-4K` as `dataset_args.dataset_path` for SFT data
+generation and as `--source-root` when preparing RL data.
 
 # SFT Data Generation
 
