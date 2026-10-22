@@ -1,10 +1,12 @@
 # Train the Agent, Not the Expert: Learning to Harness Heterogeneous Experts for Multi-Turn Visual Reasoning (NeurIPS 2026)
 
-[![arXiv](https://img.shields.io/badge/arXiv-2605.29894-b31b1b)](https://arxiv.org/abs/2605.29894)
-![NeurIPS 2026](https://img.shields.io/badge/NeurIPS-2026-007ec6)
-[![SFT Dataset](https://img.shields.io/badge/SFT%20Dataset-Hugging%20Face-ffd21e)](https://huggingface.co/datasets/fyw1999/VisHarness-SFT-Data)
-[![SFT Weights](https://img.shields.io/badge/SFT%20Weights-Hugging%20Face-ffd21e)](https://huggingface.co/fyw1999/VisHarness-SFT-Qwen3-VL-8B-Thinking)
-[![RL Weights](https://img.shields.io/badge/RL%20Weights-Hugging%20Face-ffd21e)](https://huggingface.co/fyw1999/VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550)
+<p align="center">
+  <a href="https://arxiv.org/abs/2605.29894"><img src="https://img.shields.io/badge/arXiv-2605.29894-b31b1b" alt="arXiv"></a>
+  <img src="https://img.shields.io/badge/NeurIPS-2026-007ec6" alt="NeurIPS 2026">
+  <a href="https://huggingface.co/datasets/fyw1999/VisHarness-SFT-Data"><img src="https://img.shields.io/badge/SFT%20Dataset-Hugging%20Face-ffd21e" alt="SFT Dataset"></a>
+  <a href="https://huggingface.co/fyw1999/VisHarness-SFT-Qwen3-VL-8B-Thinking"><img src="https://img.shields.io/badge/SFT%20Weights-Hugging%20Face-ffd21e" alt="SFT Weights"></a>
+  <a href="https://huggingface.co/fyw1999/VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550"><img src="https://img.shields.io/badge/RL%20Weights-Hugging%20Face-ffd21e" alt="RL Weights"></a>
+</p>
 
 # Environment Setup
 
