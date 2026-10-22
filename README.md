@@ -763,6 +763,10 @@ parameters have been configured, start RL training from the project root:
 bash recipe/visharness/scripts/rl/train_visharness.sh
 ```
 
+Validation reward during RL training (`val-core/evaluation_reward_mean`):
+
+![Validation reward during RL training](assets/rl_validation_reward.png)
+
 Our RL-trained model is available at
 [VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550](https://huggingface.co/fyw1999/VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550).
 This checkpoint was selected for its highest average reward on the validation

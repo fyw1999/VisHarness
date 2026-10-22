@@ -7,6 +7,10 @@
 !/README.md
 !/*.py
 
+# README figures.
+!/assets/
+!/assets/rl_validation_reward.png
+
 # Reproducible Conda environment exports.
 !/environment/
 !/environment/**/
