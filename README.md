@@ -276,16 +276,15 @@ generation and as `--source-root` when preparing RL data.
 
 # SFT Data Generation
 
-The SFT data generation pipeline starts with a seed pool of 4,499 image-text
-pairs drawn from three tasks: GRES, ReasonSeg, and referring expression
-counting. Kimi-K2.5 first generates one trajectory for every image-text pair by
+The SFT data generation pipeline starts from the VisHarness-4K dataset prepared
+above. Kimi-K2.5 first generates one trajectory for every image-text pair by
 interacting with the visual experts and processing tools, using their outputs
 to decide the next step. Each completed trajectory is compared
 with the ground truth, and successful trajectories are selected using a hard
-threshold. Failed examples are then regenerated with Qwen-397B and filtered to
-retain only correct trajectories. Finally, the correct trajectories produced
-by the two models are merged and converted into the required SFT training
-format.
+threshold. Failed examples are then regenerated with Qwen3.5-397B-A17B-FP8 and
+filtered to retain only correct trajectories. Finally, the correct trajectories
+produced by the two models are merged and converted into the required SFT
+training format.
 
 ## Step 1: generation with Kimi-K2.5
 
@@ -325,9 +324,7 @@ dataset_args:
 ```
 
 Like `save_path`, a relative `resume_from_ckpt` path is resolved from the
-project root, while an absolute path is used unchanged. The trajectory runner
-raises an error if a configured checkpoint file does not exist.
-For an existing run, keep its original output directory and checkpoint path.
+project root, while an absolute path is used unchanged.
 
 After completing the configuration, run the trajectory runner from the project
 root with the Kimi-K2.5 configuration:
@@ -376,7 +373,7 @@ The command writes the following files to `--output-dir`:
   our runs retained 2,573 successful trajectories and rejected 1,926 failed
   trajectories.
 
-## Step 3: generation with Qwen3.5-397B
+## Step 3: generation with Qwen3.5-397B-A17B-FP8
 
 In
 `recipe/visharness/scripts/trajectory_runner/start_vLLM_qwen_3.5_397B-A17B-FP8.bash`,
@@ -386,7 +383,7 @@ set `MODEL_PATH` to the path of your downloaded Qwen3.5-397B-A17B-FP8 model:
 MODEL_PATH="/path/to/downloaded/Qwen3.5-397B-A17B-FP8"
 ```
 
-Then run the launch script from the project root to start Qwen3.5-397B:
+Then run the launch script from the project root to start Qwen3.5-397B-A17B-FP8:
 
 ```bash
 bash recipe/visharness/scripts/trajectory_runner/start_vLLM_qwen_3.5_397B-A17B-FP8.bash
@@ -423,12 +420,12 @@ python -m visharness.trajectory_runner \
   --config recipe/visharness/configs/trajectory_runner/Qwen3.5-397B-A17B-FP8_online_config.yaml
 ```
 
-The Qwen3.5-397B generation process takes approximately 4 hours on our
+The Qwen3.5-397B-A17B-FP8 generation process takes approximately 4 hours on our
 hardware. The actual runtime depends on the available hardware.
 
-## Step 4: filter Qwen3.5-397B trajectories
+## Step 4: filter Qwen3.5-397B-A17B-FP8 trajectories
 
-After Qwen3.5-397B finishes generating trajectories, filter the generated
+After Qwen3.5-397B-A17B-FP8 finishes generating trajectories, filter the generated
 results against the ground-truth annotations:
 
 ```bash
@@ -447,7 +444,7 @@ Set `--rec8k-annotations` to the REC8K annotation JSON file,
 
 ## Step 5: build the SFT dataset
 
-After filtering the Qwen3.5-397B trajectories, build the final SFT dataset.
+After filtering the Qwen3.5-397B-A17B-FP8 trajectories, build the final SFT dataset.
 This step performs the following operations:
 
 1. Post-process each data source.
@@ -487,14 +484,23 @@ Within this directory, `merged_sft_data_swift_cmd.jsonl` is the final training
 dataset in the format required by the Swift training framework. Use this file
 as the dataset input for SFT training.
 
+Alternatively, download our ready-to-use
+[SFT dataset](https://huggingface.co/datasets/fyw1999/VisHarness-SFT-Data).
+Place [merged_sft_data_swift_cmd.jsonl](https://huggingface.co/datasets/fyw1999/VisHarness-SFT-Data/blob/main/merged_sft_data_swift_cmd.jsonl)
+and [images.tar.gz](https://huggingface.co/datasets/fyw1999/VisHarness-SFT-Data/blob/main/images.tar.gz)
+in the same directory, then extract `images.tar.gz` there. This directory is
+ready for SFT training and can be used as `DATASET_DIR` below.
+
 # SFT Training
 
 In `recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh`, set
 `MODEL_PATH` to the path of the downloaded model to fine-tune, such as a
-Qwen3-VL model:
+Qwen3-VL model, and set `DATASET_DIR` to the SFT dataset directory built or
+downloaded above:
 
 ```bash
 MODEL_PATH="/path/to/downloaded/Qwen3-VL-8B-Thinking"
+DATASET_DIR="$PROJECT_ROOT/training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisHarness-4K-20260927-patch56k"
 ```
 
 Then run the training script from the project root:
@@ -508,13 +514,8 @@ dataset takes approximately 2 hours and 45 minutes (roughly 3 hours) on eight
 NVIDIA A100-SXM4-80GB GPUs. The actual runtime depends on the hardware, dataset
 size, and training configuration.
 
-To inspect the data that will be passed to the model during SFT, use the
-`debug_swift_sft.py` helper included in the checkout after setting its
-`model_id_or_path` and `dataset_path` values.
-
-The script prints one encoded SFT training sample to the console, including the
-complete model input and the supervised portion that is used to compute the
-training loss.
+Debug `scripts/debug_swift_sft.py` to see what a sample looks like
+during SFT training.
 
 # Inference after SFT
 
