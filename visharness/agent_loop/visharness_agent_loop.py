@@ -25,6 +25,7 @@ from verl.experimental.agent_loop.agent_loop import (
 from verl.utils.chat_template import apply_chat_template
 from verl.utils.tokenizer import build_multimodal_processor_inputs, normalize_token_ids
 from verl.workers.rollout.replica import TokenOutput
+from visharness.data.image_paths import resolve_coco_image_path
 from visharness.prompts import VISION_RESULT_TOOLS, VISION_TOOL_PROMPT
 from visharness.tools.errors import ToolOOMRetriesExhaustedError
 
@@ -92,7 +93,7 @@ def _load_rgb_image(image_value: Any) -> Image.Image:
         image_path = str(image_value)
         if image_path.startswith("file://"):
             image_path = image_path[7:]
-        with Image.open(image_path) as image:
+        with Image.open(resolve_coco_image_path(image_path)) as image:
             return image.convert("RGB")
     if isinstance(image_value, bytes):
         with Image.open(BytesIO(image_value)) as image:

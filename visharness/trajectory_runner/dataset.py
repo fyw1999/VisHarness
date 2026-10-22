@@ -12,6 +12,8 @@ from typing import Any
 from PIL import Image, ImageOps
 from torch.utils.data import Dataset
 
+from visharness.data.image_paths import resolve_coco_image_path
+
 from .config import as_plain_dict, resolve_project_path
 
 
@@ -40,7 +42,7 @@ def _load_records(path: str | Path) -> list[dict[str, Any]]:
 
 
 def _load_rgb_image(path: str | Path) -> Image.Image:
-    with Image.open(path) as image:
+    with Image.open(resolve_coco_image_path(path)) as image:
         return ImageOps.exif_transpose(image).convert("RGB")
 
 
@@ -155,9 +157,11 @@ class TrajectoryDataset(Dataset):
             for json_file in json_files:
                 for item in _load_records(json_file):
                     image_file = item.get("image_path")
-                    if image_file and not os.path.isabs(str(image_file)):
+                    if image_file:
                         item = dict(item)
-                        item["image_path"] = os.path.join(dataset_path, str(image_file))
+                        item["image_path"] = str(
+                            resolve_coco_image_path(image_file, dataset_root=dataset_path)
+                        )
                     records.append(item)
         else:
             records = _load_records(dataset_path)
@@ -165,8 +169,10 @@ class TrajectoryDataset(Dataset):
             for index, item in enumerate(records):
                 item.setdefault("id", str(index))
                 image_path = item.get("image_path") or item.get("image")
-                if isinstance(image_path, str) and not os.path.isabs(image_path):
-                    item["image_path"] = os.path.join(base_dir, image_path)
+                if isinstance(image_path, str):
+                    item["image_path"] = str(
+                        resolve_coco_image_path(image_path, dataset_root=base_dir)
+                    )
 
         _validate_unique_record_ids(records)
         if num_samples is not None:
@@ -232,6 +238,7 @@ class TrajectoryDataset(Dataset):
             image_path = item.get("image_path") or image_value
             if not image_path:
                 raise ValueError("Dataset item must contain 'image' or 'image_path'")
+            image_path = resolve_coco_image_path(image_path)
             image = _load_rgb_image(image_path)
             item["image_path"] = str(image_path)
         image = _resize_like_legacy_eval(

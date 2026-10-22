@@ -153,19 +153,16 @@ for the source data requirements. Organize the files as follows:
 │   └── train2014/
 │       ├── COCO_train2014_000000000009.jpg
 │       └── ...
-├── train2014 -> images/train2014
 ├── GRES_QA_val.json       # prepared VisHarness manifest
 ├── GRES_QA_testA.json     # prepared VisHarness manifest
 └── GRES_QA_testB.json     # prepared VisHarness manifest
 ```
 
-The gRefCOCO API expects images under `images/train2014`, while the existing
-evaluation manifests use paths such as `train2014/COCO_train2014_*.jpg`.
-If `GRES/train2014` is not already present, create the compatibility symlink:
-
-```bash
-ln -s images/train2014 /path/to/datasets/GRES/train2014
-```
+Use `images/train2014/COCO_train2014_*.jpg` as the image paths in GRES QA
+manifests. Keep only this image directory; a second `GRES/train2014` directory
+or symlink is not needed. Image-loading entry points also resolve legacy
+`train2014/...` paths from older manifests or checkpoints to this directory
+when the canonical image exists.
 
 ## ReasonSeg
 

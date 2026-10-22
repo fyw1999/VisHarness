@@ -22,6 +22,8 @@ import numpy as np
 from PIL import Image, ImageOps
 from pycocotools import mask as mask_utils
 
+from visharness.data.image_paths import resolve_coco_image_path
+
 
 TERMINATION_ANSWER = "answer"
 TERMINATION_FAILED = "failed"
@@ -306,13 +308,15 @@ def resolve_image_path(
 
     image_path = Path(image_path_value)
     if image_path.is_absolute():
-        return image_path
+        return resolve_coco_image_path(image_path)
 
-    dataset_candidate = Path(dataset_root) / image_path
+    dataset_candidate = resolve_coco_image_path(image_path, dataset_root=dataset_root)
     if dataset_candidate.exists():
         return dataset_candidate
 
-    manifest_candidate = Path(manifest_path).parent / image_path
+    manifest_candidate = resolve_coco_image_path(
+        image_path, dataset_root=Path(manifest_path).parent
+    )
     if manifest_candidate.exists():
         return manifest_candidate
 
@@ -322,7 +326,7 @@ def resolve_image_path(
 
 
 def load_exif_transposed_image_size(path_value: str | Path) -> tuple[int, int]:
-    path = Path(path_value)
+    path = resolve_coco_image_path(path_value)
     if not path.is_file():
         raise FileNotFoundError(path)
     with Image.open(path) as image:

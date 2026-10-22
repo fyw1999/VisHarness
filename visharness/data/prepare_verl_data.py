@@ -20,8 +20,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from visharness.prompts import TRAIN_TEST_SYSTEM_PROMPT
+from visharness.data.image_paths import resolve_coco_image_path
 from visharness.evaluate.grefer import G_REFER
+from visharness.prompts import TRAIN_TEST_SYSTEM_PROMPT
 
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "training_data/GRPO/verl_visharness"
 
@@ -266,7 +267,7 @@ def build_row(
     embed_system_prompt: bool = False,
 ) -> dict[str, Any]:
     item_id = item["id"]
-    source_path = source_root / item["image_path"]
+    source_path = resolve_coco_image_path(item["image_path"], dataset_root=source_root)
     if not source_path.is_file():
         raise FileNotFoundError(f"Image does not exist: {source_path}")
 

@@ -22,6 +22,7 @@ import numpy as np
 from datasets import Dataset
 from PIL import Image, ImageOps
 
+from visharness.data.image_paths import resolve_coco_image_path
 from visharness.data.prepare_verl_data import (
     G_REFER,
     PROJECT_ROOT,
@@ -594,7 +595,9 @@ def _build_validation_rows(
                 max_short_edge=max_short_edge,
                 embed_system_prompt=embed_system_prompt,
             )
-            source_path = source_root / str(item["image_path"])
+            source_path = resolve_coco_image_path(
+                item["image_path"], dataset_root=source_root
+            )
             original_width, original_height = _original_image_size(source_path)
             evaluation_ground_truth = build_ground_truth(
                 str(item["id"]),
