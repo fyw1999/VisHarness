@@ -58,20 +58,23 @@ def test_readme_and_generation_templates_use_visharness_dataset_name():
     ]
 
 
-@pytest.mark.parametrize("case", ["new_preferred", "legacy_only", "fresh", "explicit"])
+@pytest.mark.parametrize("case", ["default", "empty", "explicit", "old_directory_ignored"])
 def test_sft_launcher_dataset_selection_without_starting_training(tmp_path, case):
     project_root = Path(__file__).resolve().parents[2]
     relative_script = Path("recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh")
     fake_project = tmp_path / "project"
     script = fake_project / relative_script
     script.parent.mkdir(parents=True)
-    script.write_bytes((project_root / relative_script).read_bytes())
+    content = (project_root / relative_script).read_text()
+    assert "LEGACY_DATASET_DIR" not in content
+    assert "VisionAgent-4K" not in content
+    script.write_text(content)
     canonical = fake_project / "training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisHarness-4K-20260927-patch56k"
-    legacy = fake_project / "training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k"
-    if case in {"new_preferred", "explicit"}:
+    if case == "default":
         canonical.mkdir(parents=True)
-    if case in {"new_preferred", "legacy_only", "explicit"}:
-        legacy.mkdir(parents=True)
+    if case == "old_directory_ignored":
+        old_directory = fake_project / "training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k"
+        old_directory.mkdir(parents=True)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_swift = fake_bin / "swift"
@@ -84,9 +87,11 @@ def test_sft_launcher_dataset_selection_without_starting_training(tmp_path, case
     env = os.environ.copy()
     env.pop("DATASET_DIR", None)
     env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
-    expected = legacy if case == "legacy_only" else canonical
+    expected = canonical
+    if case == "empty":
+        env["DATASET_DIR"] = ""
     if case == "explicit":
-        expected = tmp_path / "custom-data"
+        expected = tmp_path / "custom data"
         env["DATASET_DIR"] = str(expected)
     completed = subprocess.run(
         ["bash", str(script)], cwd=tmp_path, env=env,

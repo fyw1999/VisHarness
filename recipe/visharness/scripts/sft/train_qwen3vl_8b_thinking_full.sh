@@ -5,14 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../../../.." && pwd)"
 
 MODEL_PATH="${MODEL_PATH:-/vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/LLM/Qwen3-VL-8B-Thinking/}"
-if [[ -z "${DATASET_DIR:-}" ]]; then
-    DATASET_DIR="$PROJECT_ROOT/training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisHarness-4K-20260927-patch56k"
-    LEGACY_DATASET_DIR="$PROJECT_ROOT/training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k"
-    # Keep already-generated SFT data usable without renaming its files.
-    if [[ ! -d "$DATASET_DIR" && -d "$LEGACY_DATASET_DIR" ]]; then
-        DATASET_DIR="$LEGACY_DATASET_DIR"
-    fi
-fi
+DATASET_DIR="${DATASET_DIR:-$PROJECT_ROOT/training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisHarness-4K-20260927-patch56k}"
 
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
