@@ -616,6 +616,69 @@ When enabling it, set `gpu_indices` to the serving GPUs and
 Peak active KV memory is calculated separately for each replica before taking
 the maximum.
 
+## Step 3: evaluate the results
+
+After inference finishes, evaluate the generated `*_ckpt.jsonl` file.
+The commands below print the evaluation metrics and save them to `metrics.json`
+in the corresponding result directory.
+
+### REC-8K
+
+For the REC8K validation run in Step 2, evaluate counting and localization
+performance with:
+
+```bash
+python -m visharness.evaluate.evaluate_rec8k \
+  --predictions results/VisHarness_SFT_REC8K_val/VisHarness_SFT_REC8K_val_ckpt.jsonl \
+  --manifest /path/to/REC-8K/REC8K_QA_val.json \
+  --dataset-root /path/to/REC-8K \
+  --split val \
+  --metrics-output results/VisHarness_SFT_REC8K_val/metrics.json
+```
+
+### GRES
+
+After running inference on GRES validation with
+`save_path: results/VisHarness_SFT_GRES_val`, evaluate segmentation with:
+
+```bash
+python -m visharness.evaluate.evaluate_gres \
+  --predictions results/VisHarness_SFT_GRES_val/VisHarness_SFT_GRES_val_ckpt.jsonl \
+  --manifest /path/to/GRES/GRES_QA_val.json \
+  --dataset-root /path/to/GRES \
+  --split val \
+  --metrics-output results/VisHarness_SFT_GRES_val/metrics.json
+```
+
+### ReasonSeg
+
+After running inference on ReasonSeg validation with
+`save_path: results/VisHarness_SFT_ReasonSeg_val`, evaluate segmentation with:
+
+```bash
+python -m visharness.evaluate.evaluate_reasonseg \
+  --predictions results/VisHarness_SFT_ReasonSeg_val/VisHarness_SFT_ReasonSeg_val_ckpt.jsonl \
+  --manifest /path/to/ReasonSeg/ReasonSeg_QA_val.json \
+  --dataset-root /path/to/ReasonSeg \
+  --metrics-output results/VisHarness_SFT_ReasonSeg_val/metrics.json
+```
+
+### Dense200
+
+After running inference on Dense200 test with
+`save_path: results/VisHarness_SFT_Dense200_test`, evaluate detection with:
+
+```bash
+python -m visharness.evaluate.evaluate_dense200 \
+  --predictions results/VisHarness_SFT_Dense200_test/VisHarness_SFT_Dense200_test_ckpt.jsonl \
+  --manifest /path/to/Dense200/Dense200_QA_test.json \
+  --dataset-root /path/to/Dense200 \
+  --metrics-output results/VisHarness_SFT_Dense200_test/metrics.json
+```
+
+For other splits, use the matching inference results and QA manifest, and
+update `--split` where applicable.
+
 # RL Training
 
 ## Step 1: prepare the training and validation parquet files
