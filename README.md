@@ -102,9 +102,9 @@ agent training or inference process run on the first server. To set up the
 second server, copy the complete `tool_server/` directory from the project root
 to that server, then configure `remote_tools.yaml` and run
 `start_remote_tools.py` as described above. Configure network routing or port
-forwarding in advance so that the visual expert server can reach the controller
-through the controller address specified in `remote_tools.yaml`. For example,
-the two servers can be connected and the required ports forwarded through
+forwarding in advance so that the visual expert model processes and the controller
+process can reach each other over the network. For example, the two servers can
+be connected and the required ports forwarded through
 [Tailscale](https://tailscale.com/).
 
 Keep the controller, local tools, and remote visual expert workers running
