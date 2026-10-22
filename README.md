@@ -31,7 +31,7 @@ python -m pip check
 ```
 
 `VisHarness` is the main environment for data generation, evaluation, SFT, RL,
-the tool controller, and the two local CPU tools. The GPU-backed visual experts
+the controller, and the two local CPU tools. The GPU-backed visual experts
 use isolated environments because their model stacks have different Python and
 runtime requirements.
 
@@ -59,10 +59,10 @@ conda run -n SuperResolution python -c "import basicsr, gfpgan, realesrgan"
 
 # Visual Expert Server Setup
 
-VisHarness exposes six visual tools. The default model or processing backend
-used by each tool is summarized below:
+VisHarness exposes four visual experts and two processing tools. The default
+model or processing backend used by each expert or tool is summarized below:
 
-| Experts/Tools | Model or backend | Purpose |
+| Expert or tool | Model or backend | Purpose |
 | --- | --- | --- |
 | `PhraseToPoint` | [Molmo2-4B](https://huggingface.co/allenai/Molmo2-4B) | Returns the center points of all objects matching a complex text description, including attributes, relative positions, and other constraints. |
 | `PhraseToBoxMask` | [SAM 3](https://huggingface.co/facebook/sam3) (`sam3.pt`) | Returns bounding boxes and masks for all objects matching a simple noun-phrase description. |
@@ -273,9 +273,9 @@ generation and as `--source-root` when preparing RL data.
 
 The SFT data generation pipeline starts with a seed pool of 4,499 image-text
 pairs drawn from three tasks: GRES, ReasonSeg, and referring expression
-counting. Kimi-K2.5 first generates one tool-augmented trajectory for every
-image-text pair. During generation, the model invokes the visual tools and uses
-their outputs to decide the next step. Each completed trajectory is compared
+counting. Kimi-K2.5 first generates one trajectory for every image-text pair by
+interacting with the visual experts and processing tools, using their outputs
+to decide the next step. Each completed trajectory is compared
 with the ground truth, and successful trajectories are selected using a hard
 threshold. Failed examples are then regenerated with Qwen-397B and filtered to
 retain only correct trajectories. Finally, the correct trajectories produced
@@ -550,10 +550,10 @@ tensor parallel and data parallel sizes must match the number of GPUs used.
 
 Inference typically uses fewer GPUs for the MLLM than training, leaving spare
 GPUs available to deploy additional visual expert instances. To enable them,
-uncomment the tool blocks starting at `PhraseToPoint` in
+uncomment the expert configuration blocks starting at `PhraseToPoint` in
 `tool_server/tool_workers/scripts/launch_scripts/config/controller_local_tools.yaml`.
 Adjust their `cuda_visible_devices`, model paths, and Conda environments to
-your setup, using GPUs not assigned to the MLLM, then launch the local tools
+your setup, using GPUs not assigned to the MLLM, then launch the local experts
 with the updated configuration.
 
 Start the server from the project root:
@@ -666,8 +666,8 @@ training_data/GRPO/verl_visharness_official_val/
 By default, neither parquet embeds the system prompt. During training and
 validation, `VisHarnessDataset` injects the current
 `TRAIN_TEST_SYSTEM_PROMPT` before multimodal prompt-length filtering, while the
-tool schemas are loaded dynamically from the tool configuration. Pass
-`--embed-system-prompt` to either data-preparation command only when a
+expert and tool invocation schemas are loaded dynamically from the configuration.
+Pass `--embed-system-prompt` to either data-preparation command only when a
 self-contained parquet is required.
 
 Both builders are deterministic when the source data, code version,
