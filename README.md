@@ -8,16 +8,23 @@
   <a href="https://huggingface.co/fyw1999/VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550"><img src="https://img.shields.io/badge/RL%20Weights-Hugging%20Face-ffd21e" alt="RL Weights"></a>
 </p>
 
-# Table of Contents
+# Catalog
 
-- [Environment Setup](#environment-setup)
-- [Visual Expert Server Setup](#visual-expert-server-setup)
-- [Data Preparation](#data-preparation)
-- [SFT Data Generation](#sft-data-generation)
-- [SFT Training](#sft-training)
-- [Inference after SFT](#inference-after-sft)
-- [RL Training](#rl-training)
-- [Inference after RL](#inference-after-rl)
+- ✅ [Environment Setup](#environment-setup)
+
+- ✅ [Visual Expert Server Setup](#visual-expert-server-setup)
+
+- ✅ [Data Preparation](#data-preparation)
+
+- ✅ [SFT Data Generation](#sft-data-generation)
+
+- ✅ [SFT Training](#sft-training)
+
+- ✅ [Inference after SFT](#inference-after-sft)
+
+- ✅ [RL Training](#rl-training)
+
+- ✅ [Inference after RL](#inference-after-rl)
 
 # Environment Setup
 
