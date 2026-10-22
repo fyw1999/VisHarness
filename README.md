@@ -538,12 +538,6 @@ training, such as `checkpoint-105` for the run described above:
 MODEL="${MODEL:-checkpoints/sft/Qwen3-VL-8B-Thinking/<sft-run>/checkpoint-105}"
 ```
 
-Replace `<sft-run>` with your training run directory. The script automatically
-locates the project root and resolves relative `MODEL` paths against it,
-regardless of the current working directory. Absolute paths are also accepted.
-You can override the checkpoint through the `MODEL` environment variable
-without editing the script. The checkpoint must exist at the selected path.
-
 Also adjust `CUDA_VISIBLE_DEVICES`, `--tensor-parallel-size`, and
 `--data-parallel-size` to match your GPUs. The example in the script uses four
 GPUs (`CUDA_VISIBLE_DEVICES=0,1,2,3`) with:
