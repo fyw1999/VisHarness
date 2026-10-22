@@ -201,6 +201,10 @@ wget -c https://huggingface.co/datasets/fyw1999/REC-8K-Images/resolve/main/REC8K
 tar -xzf /path/to/datasets/REC-8K/REC8K_images.tar.gz -C /path/to/datasets/REC-8K
 ```
 
+This download link is provided solely to make reproducing this project faster
+and more convenient. Users must comply with the licenses and usage terms of the
+original source datasets. All image rights remain with their respective owners.
+
 Generate `REC8K_QA_val.json` and `REC8K_QA_test.json`:
 
 ```bash
