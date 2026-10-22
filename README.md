@@ -192,6 +192,15 @@ and extract `annotations.json` and `splits.json` into `/path/to/datasets/REC-8K/
 Download the source images listed there, run the official `data_preprocess.py`,
 and place the resulting images in `/path/to/datasets/REC-8K/images/`.
 
+Alternatively, download our prepared [REC-8K images](https://huggingface.co/datasets/fyw1999/REC-8K-Images)
+and extract the archive:
+
+```bash
+mkdir -p /path/to/datasets/REC-8K
+wget -c https://huggingface.co/datasets/fyw1999/REC-8K-Images/resolve/main/REC8K_images.tar.gz -O /path/to/datasets/REC-8K/REC8K_images.tar.gz
+tar -xzf /path/to/datasets/REC-8K/REC8K_images.tar.gz -C /path/to/datasets/REC-8K
+```
+
 Generate `REC8K_QA_val.json` and `REC8K_QA_test.json`:
 
 ```bash
