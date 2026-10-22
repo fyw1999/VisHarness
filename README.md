@@ -594,7 +594,8 @@ batch_size: 24
 max_rounds: 12
 
 dataset_args:
-  task_names: REC8K
+  task_names:
+    REC8K
   split: val
   dataset_path: /path/to/REC-8K
   save_path: results/VisHarness_SFT_REC8K_val
