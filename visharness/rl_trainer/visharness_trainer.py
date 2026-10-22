@@ -42,6 +42,7 @@ from visharness.agent_loop.dynamic_validation_manager import (
     _normalize_worker_output_fields,
 )
 
+from .checkpoint_export import compact_bf16_hf_checkpoint
 from .checkpoint_retention import prune_resume_checkpoints
 from .per_turn import (
     NoTrainablePerTurnSamplesError,
@@ -3433,6 +3434,12 @@ class VisHarnessTrainer(RayDAPOTrainer):
                 f"Cannot archive HF checkpoint because {source_dir} does not contain model weight files. "
                 "Set actor_rollout_ref.actor.checkpoint.save_contents=['model','optimizer','extra','hf_model']."
             )
+
+        # Only the standalone HF export is cast; FSDP model/optimizer shards
+        # retain their original precision for exact training resume.
+        converted = compact_bf16_hf_checkpoint(source_dir)
+        if converted:
+            print(f"Compacted {converted} FP32 inference tensors to BF16: {source_dir}")
 
         parent_dir = os.path.dirname(target_dir)
         os.makedirs(parent_dir, exist_ok=True)
