@@ -561,8 +561,10 @@ GPUs available to deploy additional visual expert instances. To enable them,
 uncomment the expert configuration blocks starting at `PhraseToPoint` in
 `tool_server/tool_workers/scripts/launch_scripts/config/controller_local_tools.yaml`.
 Adjust their `cuda_visible_devices`, model paths, and Conda environments to
-your setup, using GPUs not assigned to the MLLM, then launch the local experts
-with the updated configuration.
+your setup, using GPUs not assigned to the MLLM. After modifying
+`controller_local_tools.yaml` or `remote_tools.yaml`, restart the visual expert
+services by rerunning `start_controller_local_tools.py` and
+`start_remote_tools.py` as described in [Visual Expert Server Setup](#visual-expert-server-setup).
 
 Start the server from the project root:
 
