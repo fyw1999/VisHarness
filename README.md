@@ -115,7 +115,6 @@ dataset and does not require the visual expert service.
 # Data Preparation
 
 Run the following commands from the repository root.
-Each dataset can be stored independently; pass its own root directory below.
 
 ## GRES / gRefCOCO
 
