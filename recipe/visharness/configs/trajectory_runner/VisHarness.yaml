@@ -21,7 +21,6 @@ benchmark:
   save_resource_trace: true
 
 generation_args:
-  seed: 42
   max_tokens: 2048
   temperature: 0.6
   top_p: 0.95
