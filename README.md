@@ -614,23 +614,7 @@ enables GPU memory and vLLM resource monitoring and defaults to `false`.
 When enabling it, set `gpu_indices` to the serving GPUs and
 `tensor_parallel_size` to the server's TP size (not its number of replicas).
 Peak active KV memory is calculated separately for each replica before taking
-the maximum. With vLLM 0.24.0, the runner reads per-replica capacity directly
-from `/metrics` (`kv_cache_size_tokens`), not the DP-aggregated block count.
-The deployment script explicitly sets BF16 model and KV-cache dtypes and runs
-`vllm serve` directly. It does not save server logs. No Python launcher or
-manual capacity setting in YAML is needed. When using another launch command,
-set `--kv-cache-dtype` explicitly: an `auto` dtype cannot reliably be inferred
-from checkpoint weights. Missing or unsupported capacity is reported as `N/A`,
-never guessed from total GPU memory. Use an otherwise idle serving service for comparisons:
-resource metrics include other traffic on that service.
-
-MLLM request time includes client preparation, server queueing, network time,
-and SDK retries; expert-call time also includes queueing and response processing.
-These are elapsed request times, not pure GPU compute times. Token counts refer
-to returned responses, not unseen server work during failed attempts. If a
-model request fails without a response, the trajectory's cumulative token totals
-are marked unavailable rather than reporting a partial total. Evaluation JSON
-reports each metric's sample count, missing count, and coverage alongside its mean.
+the maximum.
 
 # RL Training
 
