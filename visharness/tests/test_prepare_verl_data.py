@@ -9,7 +9,7 @@ from visharness.prompts import TRAIN_TEST_SYSTEM_PROMPT
 def _required_cli_args() -> list[str]:
     return [
         "--source-root",
-        "/datasets/visionagent-4k",
+        "/datasets/visharness-4k",
         "--rec8k-anno-path",
         "/datasets/rec8k/annotations.json",
         "--gres-data-root",

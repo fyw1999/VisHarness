@@ -1,4 +1,4 @@
-"""Prepare evaluation QA manifests and the VisionAgent-4K training seed pool."""
+"""Prepare evaluation QA manifests and the VisHarness-4K training seed pool."""
 
 from __future__ import annotations
 
@@ -273,7 +273,7 @@ def prepare_dataset(
     """Validate inputs before writing; existing unequal outputs require opt-in."""
     if dataset == "seed":
         manifests = build_seed_manifests(data_root, seed)
-        destination = data_root / "VisionAgent-4K"
+        destination = data_root / "VisHarness-4K"
         source_root = None
     else:
         source_root = data_root / DATASET_DIRS[dataset]

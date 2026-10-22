@@ -17,24 +17,34 @@ upstream as possible.
 
 ## Prepare verl data
 
-Generate a small smoke-test dataset directly from the raw VisionAgent-4K,
+Generate a small smoke-test dataset directly from the raw VisHarness-4K,
 REC-8K, GRES, and ReasonSeg annotations:
 
 ```bash
 python visharness/data/prepare_verl_data.py \
+  --source-root /path/to/datasets/VisHarness-4K \
+  --rec8k-anno-path /path/to/datasets/REC-8K/annotations.json \
+  --gres-data-root /path/to/datasets/GRES \
+  --reasonseg-data-root /path/to/datasets/ReasonSeg/train \
   --output-dir /tmp/visharness_verl_smoke \
   --max-samples 60 \
   --overwrite true
 ```
 
-Generate the complete train/validation parquet files:
+Generate the complete training parquet:
 
 ```bash
-python visharness/data/prepare_verl_data.py --overwrite true
+python visharness/data/prepare_verl_data.py \
+  --source-root /path/to/datasets/VisHarness-4K \
+  --rec8k-anno-path /path/to/datasets/REC-8K/annotations.json \
+  --gres-data-root /path/to/datasets/GRES \
+  --reasonseg-data-root /path/to/datasets/ReasonSeg/train \
+  --val-ratio 0 \
+  --overwrite true
 ```
 
-The complete files are written to
-`training_data/GRPO/verl_visharness/{train,val}.parquet` by default.
+The training parquet is written to
+`training_data/GRPO/verl_visharness/train.parquet` by default.
 By default, parquet rows contain only the user message. `VisHarnessDataset`
 injects the current canonical system prompt before prompt-length filtering and
 rollout. Pass `--embed-system-prompt` only when a self-contained parquet file
@@ -45,10 +55,10 @@ ReasonSeg, GRES, and REC-8K validation splits:
 
 ```bash
 python -m visharness.data.prepare_official_validation \
-  --rec8k-data-root /path/to/REC-8K \
-  --gres-data-root /path/to/GRES \
-  --reasonseg-data-root /path/to/ReasonSeg \
-  --train-manifest-root /path/to/VisionAgent-4K \
+  --rec8k-data-root /path/to/datasets/REC-8K \
+  --gres-data-root /path/to/datasets/GRES \
+  --reasonseg-data-root /path/to/datasets/ReasonSeg \
+  --train-manifest-root /path/to/datasets/VisHarness-4K \
   --overwrite true
 ```
 

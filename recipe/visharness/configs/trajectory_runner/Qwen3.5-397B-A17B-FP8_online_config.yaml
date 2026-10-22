@@ -26,7 +26,7 @@ dataset_args:
     GRES
     REC8K
   split: train
-  dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/VisionAgent-4K/
+  dataset_path: /vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/datasets/VisHarness-4K/
   resume_from_ckpt: 
     - training_data/SFT/Kimi-K2.5-VisionAgent-4K/accepted_ids.jsonl
     - training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_ckpt.jsonl

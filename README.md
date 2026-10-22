@@ -248,10 +248,10 @@ Final layout:
 └── Dense200_QA_test.json
 ```
 
-## Training seed pool
+## VisHarness-4K training seed pool
 
 After preparing GRES, ReasonSeg, and REC-8K, generate the three training QA
-files and copy their images into `/path/to/datasets/VisionAgent-4K/`:
+files and copy their images into `/path/to/datasets/VisHarness-4K/`:
 
 ```bash
 python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset seed --seed 42
@@ -260,7 +260,7 @@ python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --datase
 Final layout:
 
 ```text
-/path/to/datasets/VisionAgent-4K/
+/path/to/datasets/VisHarness-4K/
 ├── GRES_QA_train.json      # 1,600 image-text pairs
 ├── REC8K_QA_train.json     # 2,660 image-text pairs
 ├── ReasonSeg_QA_train.json #   239 image-text pairs
@@ -271,7 +271,7 @@ Final layout:
     └── ...
 ```
 
-Use `/path/to/datasets/VisionAgent-4K` as `dataset_args.dataset_path` for SFT data
+Use `/path/to/datasets/VisHarness-4K` as `dataset_args.dataset_path` for SFT data
 generation and as `--source-root` when preparing RL data.
 
 # SFT Data Generation
@@ -308,7 +308,7 @@ set `save_path` to the path where the generated results should be saved:
 
 ```yaml
 dataset_args:
-  dataset_path: /path/to/seed/data
+  dataset_path: /path/to/datasets/VisHarness-4K
   save_path: training_data/SFT/Kimi-K2.5-VisionAgent-4K
   resume_from_ckpt:
 ```
@@ -612,12 +612,12 @@ reports each metric's sample count, missing count, and coverage alongside its me
 
 ## Step 1: prepare the training and validation parquet files
 
-RL training uses all 4,499 image-text pairs from the VisionAgent-4K training
+RL training uses all 4,499 image-text pairs from the VisHarness-4K training
 manifests. Generate the training parquet from the project root:
 
 ```bash
 python visharness/data/prepare_verl_data.py \
-  --source-root /path/to/VisionAgent-4K \
+  --source-root /path/to/datasets/VisHarness-4K \
   --rec8k-anno-path /path/to/REC-8K/annotations.json \
   --gres-data-root /path/to/GRES \
   --reasonseg-data-root /path/to/ReasonSeg/train \
@@ -647,7 +647,7 @@ python -m visharness.data.prepare_official_validation \
   --rec8k-data-root /path/to/REC-8K \
   --gres-data-root /path/to/GRES \
   --reasonseg-data-root /path/to/ReasonSeg \
-  --train-manifest-root /path/to/VisionAgent-4K \
+  --train-manifest-root /path/to/datasets/VisHarness-4K \
   --output-dir training_data/GRPO/verl_visharness_official_val \
   --samples-per-task 100 \
   --seed 42 \

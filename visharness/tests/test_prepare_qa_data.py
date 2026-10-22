@@ -171,8 +171,8 @@ def test_prepare_writes_manifests_and_is_safe_to_repeat(raw_data, tiny_quotas, d
         for record in json.loads(path.read_text()):
             assert (path.parent / record["image_path"]).is_file()
     if dataset == "seed":
-        assert not (raw_data / "VisionAgent-4K/REC8K_QA_val.json").exists()
-        assert not (raw_data / "VisionAgent-4K/images/REC8K-a2.jpg").exists()
+        assert not (raw_data / "VisHarness-4K/REC8K_QA_val.json").exists()
+        assert not (raw_data / "VisHarness-4K/images/REC8K-a2.jpg").exists()
         for path in outputs:
             for record in json.loads(path.read_text()):
                 source = prep._seed_image_source(raw_data, record["image_path"])
@@ -199,7 +199,7 @@ def test_prepare_checks_images_before_any_output_is_written(raw_data):
 
 def test_seed_does_not_overwrite_changed_image_without_flag(raw_data, tiny_quotas):
     prep.prepare_dataset(raw_data, "seed")
-    path = raw_data / "VisionAgent-4K/images/REC8K-a.jpg"
+    path = raw_data / "VisHarness-4K/images/REC8K-a.jpg"
     path.write_bytes(b"do-not-overwrite")
     with pytest.raises(FileExistsError):
         prep.prepare_dataset(raw_data, "seed")
@@ -208,7 +208,20 @@ def test_seed_does_not_overwrite_changed_image_without_flag(raw_data, tiny_quota
     assert path.read_bytes() == (raw_data / "REC-8K/images/a.jpg").read_bytes()
 
 
-def test_cli_accepts_readme_command(raw_data, monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["prepare_qa_data", "--data-root", str(raw_data), "--dataset", "dense200"])
+def test_seed_output_uses_visharness_name(raw_data, tiny_quotas):
+    outputs = prep.prepare_dataset(raw_data, "seed")
+    assert {path.parent for path in outputs} == {raw_data / "VisHarness-4K"}
+    assert {path.name for path in outputs} == {
+        "GRES_QA_train.json", "REC8K_QA_train.json", "ReasonSeg_QA_train.json",
+    }
+    assert not (raw_data / "VisionAgent-4K").exists()
+
+
+@pytest.mark.parametrize("dataset", ["dense200", "seed"])
+def test_cli_accepts_readme_command(raw_data, tiny_quotas, monkeypatch, dataset):
+    monkeypatch.setattr(sys, "argv", ["prepare_qa_data", "--data-root", str(raw_data), "--dataset", dataset])
     prep.main()
-    assert (raw_data / "Dense200/Dense200_QA_test.json").is_file()
+    if dataset == "dense200":
+        assert (raw_data / "Dense200/Dense200_QA_test.json").is_file()
+    else:
+        assert (raw_data / "VisHarness-4K/GRES_QA_train.json").is_file()

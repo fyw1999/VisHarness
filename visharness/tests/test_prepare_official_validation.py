@@ -19,7 +19,7 @@ def _required_cli_args() -> list[str]:
         "--reasonseg-data-root",
         "/datasets/reasonseg",
         "--train-manifest-root",
-        "/datasets/visionagent-4k",
+        "/datasets/visharness-4k",
     ]
 
 
@@ -98,7 +98,7 @@ def test_official_validation_cli_accepts_individual_dataset_roots(monkeypatch):
             "--reasonseg-data-root",
             "/datasets/reasonseg",
             "--train-manifest-root",
-            "/datasets/visionagent-4k",
+            "/datasets/visharness-4k",
         ],
     )
 

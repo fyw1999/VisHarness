@@ -41,7 +41,7 @@ def parse_bool(value: str | bool) -> bool:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Convert raw VisionAgent-4K annotations into verl-compatible parquet files."
+        description="Convert raw VisHarness-4K annotations into verl-compatible parquet files."
     )
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--rec8k-anno-path", type=Path, required=True)
