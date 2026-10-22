@@ -113,7 +113,28 @@ update the corresponding values before launching the workers.
 `SplitImageIntoPatches` and `MergeBoxMask` run as local CPU tools and therefore
 do not require model checkpoints.
 
-First, configure the controller and local visual tools in
+Our setup uses two servers:
+
+| Server | Workload | GPUs |
+| --- | --- | --- |
+| Main server | Kimi-K2.5 teacher, Qwen3.5-397B-A17B-FP8 teacher, SFT, and RL, run one stage at a time | `0–7` |
+| Main server | Standalone SFT or RL model inference service | `0–3` |
+| Expert server | Remote visual expert workers | `0–3` |
+
+GPU indices are local to each server: the expert server's GPUs `0–3` are not
+the main server's GPUs `0–3`. The main-server stages reuse the same GPUs and
+must run sequentially. Before switching stages, stop the previous model
+service or training process (for a foreground service, press `Ctrl+C` in
+its launch terminal), and wait for its processes to exit and release GPU
+memory. The teacher and standalone inference services also share port `8000`.
+The remote visual experts can remain running during these switches.
+
+If deploying everything on one server, assign visual experts to GPUs that do
+not overlap those used by the teacher, inference service, or SFT/RL training.
+The eight-GPU teacher and training configurations below leave no GPUs for
+local visual experts on an eight-GPU server.
+
+First, on the main server, configure the controller and local visual tools in
 `tool_server/tool_workers/scripts/launch_scripts/config/controller_local_tools.yaml`.
 Open a dedicated terminal session and run the following command from the project
 root to start the controller and local tools:
@@ -122,24 +143,22 @@ root to start the controller and local tools:
 python tool_server/tool_workers/scripts/launch_scripts/start_controller_local_tools.py
 ```
 
-Next, configure the visual expert model settings in
+Next, on the separate expert server, prepare the expert environments and model
+checkpoints described above and copy the complete `tool_server/` directory
+there. Configure the visual expert model settings in
 `tool_server/tool_workers/scripts/launch_scripts/config/remote_tools.yaml`.
-Open another dedicated terminal session and start the visual expert workers:
+The provided configuration assigns these workers to GPUs `0–3` on that
+expert server. Configure network routing or port forwarding so that the visual
+expert model processes and the controller process can reach each other.
+For example, connect the servers and forward the required ports through
+[Tailscale](https://tailscale.com/).
+
+On the expert server, open a dedicated terminal session in the directory
+containing `tool_server/` and start the visual expert workers:
 
 ```bash
 python tool_server/tool_workers/scripts/launch_scripts/start_remote_tools.py
 ```
-
-If a single server does not have enough GPU resources, the visual expert models
-can run on a second server, while the controller, local visual tools, and the
-agent training or inference process run on the first server. To set up the
-second server, copy the complete `tool_server/` directory from the project root
-to that server, then configure `remote_tools.yaml` and run
-`start_remote_tools.py` as described above. Configure network routing or port
-forwarding in advance so that the visual expert model processes and the controller
-process can reach each other over the network. For example, the two servers can
-be connected and the required ports forwarded through
-[Tailscale](https://tailscale.com/).
 
 On first startup, `SuperResolution` may also download auxiliary face-detection
 and face-parsing weights into `tool_server/tool_workers/gfpgan/weights/` on the
@@ -332,6 +351,11 @@ training format.
 
 ## Step 1: generation with Kimi-K2.5
 
+Run the teacher on the main server using GPUs `0–7`. Stop any previous model
+service or training job occupying these GPUs before launching Kimi-K2.5;
+keep the main-server controller and local tools, and the remote experts on
+the separate expert server, running.
+
 In `recipe/visharness/scripts/trajectory_runner/start_vLLM_Kimi_K2.5.bash`, set `MODEL_PATH` to the path of your downloaded Kimi-K2.5 model:
 
 ```bash
@@ -341,7 +365,8 @@ MODEL_PATH="/path/to/downloaded/Kimi-K2.5"
 Then run the launch script from the project root:
 
 ```bash
-bash recipe/visharness/scripts/trajectory_runner/start_vLLM_Kimi_K2.5.bash
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+  bash recipe/visharness/scripts/trajectory_runner/start_vLLM_Kimi_K2.5.bash
 ```
 
 After the vLLM server is running, configure the data generation settings in
@@ -419,6 +444,11 @@ The command writes the following files to `--output-dir`:
 
 ## Step 3: generation with Qwen3.5-397B-A17B-FP8
 
+After Kimi-K2.5 generation finishes, stop its vLLM service and wait for the
+main server's GPUs `0–7` and port `8000` to be released. Launch Qwen only
+after Kimi has stopped: the two teachers use the same main server, GPUs, and
+API port, not concurrent deployments. Keep the visual expert services running.
+
 In
 `recipe/visharness/scripts/trajectory_runner/start_vLLM_qwen_3.5_397B-A17B-FP8.bash`,
 set `MODEL_PATH` to the path of your downloaded Qwen3.5-397B-A17B-FP8 model:
@@ -430,7 +460,8 @@ MODEL_PATH="/path/to/downloaded/Qwen3.5-397B-A17B-FP8"
 Then run the launch script from the project root to start Qwen3.5-397B-A17B-FP8:
 
 ```bash
-bash recipe/visharness/scripts/trajectory_runner/start_vLLM_qwen_3.5_397B-A17B-FP8.bash
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+  bash recipe/visharness/scripts/trajectory_runner/start_vLLM_qwen_3.5_397B-A17B-FP8.bash
 ```
 
 After the vLLM server is running, configure
@@ -537,6 +568,10 @@ ready for SFT training and can be used as `DATASET_DIR` below.
 
 # SFT Training
 
+SFT uses GPUs `0–7` on the same main server. After teacher data generation
+finishes, stop the Qwen teacher vLLM service and any other processes using
+these GPUs before starting SFT. SFT itself does not call the visual experts.
+
 In `recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh`, set
 `MODEL_PATH` to the path of the downloaded model to fine-tune, such as a
 Qwen3-VL model, and set `DATASET_DIR` to the SFT dataset directory built or
@@ -573,7 +608,12 @@ Download it to run the inference steps below without training the model yourself
 
 ## Step 1: deploy the SFT model with vLLM
 
-After SFT training finishes, edit
+Wait for SFT training to finish, or stop it, before deploying the inference
+service on the main server's GPUs `0–3`. Ensure these GPUs and port `8000`
+are free. The experts continue to use the separate expert server's GPUs
+`0–3`; they do not compete with this inference service.
+
+Edit
 `recipe/visharness/scripts/trajectory_runner/start_vLLM_VisHarness.bash` and set
 `MODEL` to your SFT checkpoint. By default, use the last checkpoint saved by
 training, such as `checkpoint-105` for the run described above:
@@ -615,6 +655,9 @@ your setup, using GPUs not assigned to the MLLM. After modifying
 `controller_local_tools.yaml` or `remote_tools.yaml`, restart the visual expert
 services by rerunning `start_controller_local_tools.py` and
 `start_remote_tools.py` as described in [Visual Expert Server Setup](#visual-expert-server-setup).
+Stop any added main-server GPU expert instances before a later teacher or
+training stage reuses their GPUs; the CPU controller, local tools, and remote
+experts can remain running.
 
 ## Step 2: run inference
 
@@ -790,6 +833,12 @@ expects the two parquet files at the default output locations shown above.
 
 ## Step 2: launch RL training
 
+RL uses GPUs `0–7` on the main server. After standalone inference finishes,
+stop its vLLM service and any other model services or training jobs occupying
+these GPUs, and wait for GPU memory to be released. The RL launcher manages
+its own rollout backend; do not leave the standalone inference server running.
+Keep the controller, local tools, and remote visual experts running.
+
 Before starting RL training, configure
 `recipe/visharness/scripts/rl/train_visharness.sh`. In particular, set
 `MODEL_PATH` to the SFT checkpoint that will initialize the RL policy and set
@@ -818,6 +867,8 @@ set and can be downloaded directly for inference.
 
 # Inference after RL
 
-Follow the steps in [Inference after SFT](#inference-after-sft), replacing the
+After RL finishes or is stopped and its GPU processes have exited, follow
+the steps in [Inference after SFT](#inference-after-sft), replacing the
 SFT model path with the RL checkpoint path and updating the corresponding
-parameters.
+parameters. The standalone RL inference service uses the main server's
+GPUs `0–3`, while the remote visual experts remain on the expert server.
