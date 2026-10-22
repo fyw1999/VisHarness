@@ -119,24 +119,20 @@ dataset and does not require the visual expert service.
 
 # Data Preparation
 
-Run the commands below from the repository root, with all datasets under:
-
-```bash
-export DATA_ROOT=/path/to/datasets
-```
+Run the following commands from the repository root.
 
 ## GRES / gRefCOCO
 
 - Download `grefs(unc).json` and `instances.json` from the
   [gRefCOCO release](https://huggingface.co/datasets/FudanCVL/gRefCOCO/tree/main)
-  into `$DATA_ROOT/GRES/grefcoco/`.
+  into `/path/to/datasets/GRES/grefcoco/`.
 - Download `train2014.zip` from [COCO](https://cocodataset.org/#download)
-  and extract it into `$DATA_ROOT/GRES/images/` to create `images/train2014/`.
+  and extract it into `/path/to/datasets/GRES/images/` to create `images/train2014/`.
 
 Generate `GRES_QA_val.json`, `GRES_QA_testA.json`, and `GRES_QA_testB.json`:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset gres
+python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset gres
 ```
 
 Final layout:
@@ -159,13 +155,13 @@ Final layout:
 
 Download the ReasonSeg `train`, `val`, and `test` splits from the
 [LISA dataset release](https://github.com/JIA-Lab-research/LISA#dataset)
-and extract them into `$DATA_ROOT/ReasonSeg/`, keeping each image and its
+and extract them into `/path/to/datasets/ReasonSeg/`, keeping each image and its
 same-stem JSON annotation together.
 
 Generate `ReasonSeg_QA_val.json` and `ReasonSeg_QA_test.json`:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset reasonseg
+python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset reasonseg
 ```
 
 Final layout:
@@ -192,14 +188,14 @@ Final layout:
 
 Download `anno.zip` from the
 [official Referring Expression Counting repository](https://github.com/sydai/referring-expression-counting#dataset-download)
-and extract `annotations.json` and `splits.json` into `$DATA_ROOT/REC-8K/`.
+and extract `annotations.json` and `splits.json` into `/path/to/datasets/REC-8K/`.
 Download the source images listed there, run the official `data_preprocess.py`,
-and place the resulting images in `$DATA_ROOT/REC-8K/images/`.
+and place the resulting images in `/path/to/datasets/REC-8K/images/`.
 
 Generate `REC8K_QA_val.json` and `REC8K_QA_test.json`:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset rec8k
+python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset rec8k
 ```
 
 Final layout:
@@ -218,14 +214,14 @@ Final layout:
 ## Dense200
 
 - Download [dense200.tar.gz](https://huggingface.co/datasets/Mountchicken/Rex-Omni-EvalData/blob/main/dense200.tar.gz)
-  and extract the images into `$DATA_ROOT/Dense200/dense200/`.
+  and extract the images into `/path/to/datasets/Dense200/dense200/`.
 - Download [Dense200.jsonl](https://huggingface.co/datasets/Mountchicken/Rex-Omni-EvalData/blob/main/_annotations/box_eval/Dense200.jsonl)
-  into `$DATA_ROOT/Dense200/`.
+  into `/path/to/datasets/Dense200/`.
 
 Generate `Dense200_QA_test.json`:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset dense200
+python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset dense200
 ```
 
 Final layout:
@@ -242,10 +238,10 @@ Final layout:
 ## Training seed pool
 
 After preparing GRES, ReasonSeg, and REC-8K, generate the three training QA
-files and copy their images into `$DATA_ROOT/VisionAgent-4K/`:
+files and copy their images into `/path/to/datasets/VisionAgent-4K/`:
 
 ```bash
-python -m visharness.data.prepare_qa_data --data-root "$DATA_ROOT" --dataset seed --seed 42
+python -m visharness.data.prepare_qa_data --data-root /path/to/datasets --dataset seed --seed 42
 ```
 
 Final layout:
@@ -262,7 +258,7 @@ Final layout:
     └── ...
 ```
 
-Use `$DATA_ROOT/VisionAgent-4K` as `dataset_args.dataset_path` for SFT data
+Use `/path/to/datasets/VisionAgent-4K` as `dataset_args.dataset_path` for SFT data
 generation and as `--source-root` when preparing RL data.
 
 # SFT Data Generation
