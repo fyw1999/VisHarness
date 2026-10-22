@@ -583,6 +583,23 @@ and use `model_args.model_name: VisHarness` to match the server's
 Configure `dataset_args.task_names`, `split`, `dataset_path`, and `save_path`
 for the dataset to evaluate. `batch_size` controls the maximum number of
 concurrent trajectories; adjust it to make use of the deployed replicas.
+
+For example:
+
+```yaml
+model_args:
+  tokenizer_path: checkpoints/sft/Qwen3-VL-8B-Thinking/<sft-run>/checkpoint-105
+
+batch_size: 24
+max_rounds: 12
+
+dataset_args:
+  task_names: REC8K
+  split: val
+  dataset_path: /path/to/REC-8K
+  save_path: results/VisHarness_SFT_REC8K_val
+```
+
 Keep the visual expert services running, then launch inference from the
 project root in another terminal:
 
