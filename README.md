@@ -556,6 +556,12 @@ highest throughput for every workload. With fewer GPUs or less memory, reduce
 the number of replicas or increase tensor parallel size. The product of the
 tensor parallel and data parallel sizes must match the number of GPUs used.
 
+Start the server from the project root:
+
+```bash
+bash recipe/visharness/scripts/trajectory_runner/start_vLLM_VisHarness.bash
+```
+
 Inference typically uses fewer GPUs for the MLLM than training, leaving spare
 GPUs available to deploy additional visual expert instances. To enable them,
 uncomment the expert configuration blocks starting at `PhraseToPoint` in
@@ -565,12 +571,6 @@ your setup, using GPUs not assigned to the MLLM. After modifying
 `controller_local_tools.yaml` or `remote_tools.yaml`, restart the visual expert
 services by rerunning `start_controller_local_tools.py` and
 `start_remote_tools.py` as described in [Visual Expert Server Setup](#visual-expert-server-setup).
-
-Start the server from the project root:
-
-```bash
-bash recipe/visharness/scripts/trajectory_runner/start_vLLM_VisHarness.bash
-```
 
 ## Step 2: run inference
 
