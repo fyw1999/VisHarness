@@ -1,7 +1,11 @@
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from PIL import Image
 
 from visharness.data.sft_pipeline.__main__ import main as pipeline_main
@@ -35,6 +39,65 @@ def write_jsonl(path: Path, records: list[dict]) -> None:
         "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records),
         encoding="utf-8",
     )
+
+
+def test_readme_and_generation_templates_use_visharness_dataset_name():
+    project_root = Path(__file__).resolve().parents[2]
+    for relative_path in ("README.md", "visharness/README.md"):
+        assert "VisionAgent-4K" not in (project_root / relative_path).read_text()
+    configs = {}
+    for name in ("Kimi_2.5_online_config.yaml", "Qwen3.5-397B-A17B-FP8_online_config.yaml"):
+        path = project_root / "recipe/visharness/configs/trajectory_runner" / name
+        content = path.read_text()
+        assert "VisionAgent-4K" not in content
+        configs[name] = yaml.safe_load(content)["dataset_args"]
+        assert "VisHarness-4K" in configs[name]["save_path"]
+    assert configs["Kimi_2.5_online_config.yaml"]["resume_from_ckpt"] is None
+    assert configs["Qwen3.5-397B-A17B-FP8_online_config.yaml"]["resume_from_ckpt"] == [
+        "training_data/SFT/Kimi-K2.5-VisHarness-4K/accepted_ids.jsonl"
+    ]
+
+
+@pytest.mark.parametrize("case", ["new_preferred", "legacy_only", "fresh", "explicit"])
+def test_sft_launcher_dataset_selection_without_starting_training(tmp_path, case):
+    project_root = Path(__file__).resolve().parents[2]
+    relative_script = Path("recipe/visharness/scripts/sft/train_qwen3vl_8b_thinking_full.sh")
+    fake_project = tmp_path / "project"
+    script = fake_project / relative_script
+    script.parent.mkdir(parents=True)
+    script.write_bytes((project_root / relative_script).read_bytes())
+    canonical = fake_project / "training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisHarness-4K-20260927-patch56k"
+    legacy = fake_project / "training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k"
+    if case in {"new_preferred", "explicit"}:
+        canonical.mkdir(parents=True)
+    if case in {"new_preferred", "legacy_only", "explicit"}:
+        legacy.mkdir(parents=True)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_swift = fake_bin / "swift"
+    fake_swift.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "print(json.dumps({'args': sys.argv[1:], 'image_root': os.environ['ROOT_IMAGE_DIR']}))\n"
+    )
+    fake_swift.chmod(0o755)
+    env = os.environ.copy()
+    env.pop("DATASET_DIR", None)
+    env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+    expected = legacy if case == "legacy_only" else canonical
+    if case == "explicit":
+        expected = tmp_path / "custom-data"
+        env["DATASET_DIR"] = str(expected)
+    completed = subprocess.run(
+        ["bash", str(script)], cwd=tmp_path, env=env,
+        text=True, capture_output=True, check=True,
+    )
+    captured = json.loads(completed.stdout)
+    args = captured["args"]
+    assert args[0] == "sft"
+    assert args[args.index("--dataset") + 1] == str(expected / "merged_sft_data_swift_cmd.jsonl")
+    assert captured["image_root"] == str(expected)
+    assert args[args.index("--output_dir") + 1] == "checkpoints/sft/Qwen3-VL-8B-Thinking"
 
 
 def answer_snapshot(

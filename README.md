@@ -309,7 +309,7 @@ set `save_path` to the path where the generated results should be saved:
 ```yaml
 dataset_args:
   dataset_path: /path/to/datasets/VisHarness-4K
-  save_path: training_data/SFT/Kimi-K2.5-VisionAgent-4K
+  save_path: training_data/SFT/Kimi-K2.5-VisHarness-4K
   resume_from_ckpt:
 ```
 
@@ -321,12 +321,13 @@ generated `*_ckpt.jsonl` checkpoint file to resume from the previous progress:
 
 ```yaml
 dataset_args:
-  resume_from_ckpt: training_data/SFT/Kimi-K2.5-VisionAgent-4K/Kimi-K2.5-VisionAgent-4K_ckpt.jsonl
+  resume_from_ckpt: training_data/SFT/Kimi-K2.5-VisHarness-4K/Kimi-K2.5-VisHarness-4K_ckpt.jsonl
 ```
 
 Like `save_path`, a relative `resume_from_ckpt` path is resolved from the
 project root, while an absolute path is used unchanged. The trajectory runner
 raises an error if a configured checkpoint file does not exist.
+For an existing run, keep its original output directory and checkpoint path.
 
 After completing the configuration, run the trajectory runner from the project
 root with the Kimi-K2.5 configuration:
@@ -347,9 +348,9 @@ trajectories:
 
 ```bash
 python -m visharness.data.sft_pipeline filter \
-  --checkpoint training_data/SFT/Kimi-K2.5-VisionAgent-4K/Kimi-K2.5-VisionAgent-4K_ckpt.jsonl \
-  --trajectory training_data/SFT/Kimi-K2.5-VisionAgent-4K/Kimi-K2.5-VisionAgent-4K_trajectory.jsonl \
-  --output-dir training_data/SFT/Kimi-K2.5-VisionAgent-4K \
+  --checkpoint training_data/SFT/Kimi-K2.5-VisHarness-4K/Kimi-K2.5-VisHarness-4K_ckpt.jsonl \
+  --trajectory training_data/SFT/Kimi-K2.5-VisHarness-4K/Kimi-K2.5-VisHarness-4K_trajectory.jsonl \
+  --output-dir training_data/SFT/Kimi-K2.5-VisHarness-4K \
   --rec8k-annotations /path/to/REC-8K/annotations.json \
   --gres-dataset-root /path/to/GRES \
   --reasonseg-dataset-root /path/to/ReasonSeg/train
@@ -401,7 +402,7 @@ successfully:
 ```yaml
 dataset_args:
   resume_from_ckpt:
-    - training_data/SFT/Kimi-K2.5-VisionAgent-4K/accepted_ids.jsonl
+    - training_data/SFT/Kimi-K2.5-VisHarness-4K/accepted_ids.jsonl
 ```
 
 If Qwen3.5-397B generation is interrupted, restart it with both the Kimi-K2.5
@@ -410,8 +411,8 @@ accepted IDs and the Qwen3.5-397B checkpoint:
 ```yaml
 dataset_args:
   resume_from_ckpt:
-    - training_data/SFT/Kimi-K2.5-VisionAgent-4K/accepted_ids.jsonl
-    - training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_ckpt.jsonl
+    - training_data/SFT/Kimi-K2.5-VisHarness-4K/accepted_ids.jsonl
+    - training_data/SFT/Qwen3.5-397B-A17B-FP8-VisHarness-4K/Qwen3.5-397B-A17B-FP8-VisHarness-4K_ckpt.jsonl
 ```
 
 After completing the configuration, run the trajectory runner from the
@@ -432,9 +433,9 @@ results against the ground-truth annotations:
 
 ```bash
 python -m visharness.data.sft_pipeline filter \
-  --checkpoint training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_ckpt.jsonl \
-  --trajectory training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/Qwen3.5-397B-A17B-FP8-VisionAgent-4K_trajectory.jsonl \
-  --output-dir training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K \
+  --checkpoint training_data/SFT/Qwen3.5-397B-A17B-FP8-VisHarness-4K/Qwen3.5-397B-A17B-FP8-VisHarness-4K_ckpt.jsonl \
+  --trajectory training_data/SFT/Qwen3.5-397B-A17B-FP8-VisHarness-4K/Qwen3.5-397B-A17B-FP8-VisHarness-4K_trajectory.jsonl \
+  --output-dir training_data/SFT/Qwen3.5-397B-A17B-FP8-VisHarness-4K \
   --rec8k-annotations /path/to/REC-8K/annotations.json \
   --gres-dataset-root /path/to/GRES \
   --reasonseg-dataset-root /path/to/ReasonSeg/train
@@ -459,11 +460,11 @@ Run the following command from the project root:
 
 ```bash
 python -m visharness.data.sft_pipeline build \
-  --source Kimi-K2.5=training_data/SFT/Kimi-K2.5-VisionAgent-4K/accepted_sft_snapshots.jsonl \
-  --image-root Kimi-K2.5=training_data/SFT/Kimi-K2.5-VisionAgent-4K \
-  --source Qwen3.5-397B-A17B-FP8=training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K/accepted_sft_snapshots.jsonl \
-  --image-root Qwen3.5-397B-A17B-FP8=training_data/SFT/Qwen3.5-397B-A17B-FP8-VisionAgent-4K \
-  --output-dir training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k \
+  --source Kimi-K2.5=training_data/SFT/Kimi-K2.5-VisHarness-4K/accepted_sft_snapshots.jsonl \
+  --image-root Kimi-K2.5=training_data/SFT/Kimi-K2.5-VisHarness-4K \
+  --source Qwen3.5-397B-A17B-FP8=training_data/SFT/Qwen3.5-397B-A17B-FP8-VisHarness-4K/accepted_sft_snapshots.jsonl \
+  --image-root Qwen3.5-397B-A17B-FP8=training_data/SFT/Qwen3.5-397B-A17B-FP8-VisHarness-4K \
+  --output-dir training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisHarness-4K-20260927-patch56k \
   --merged-name merged_sft_data.jsonl \
   --swift-name merged_sft_data_swift_cmd.jsonl \
   --image-max-token-num 2048 \
@@ -481,7 +482,7 @@ The two visual-budget arguments control image preprocessing and memory usage:
   risk of training OOM errors.
 
 The generated SFT dataset is stored in
-`training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k`.
+`training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisHarness-4K-20260927-patch56k`.
 Within this directory, `merged_sft_data_swift_cmd.jsonl` is the final training
 dataset in the format required by the Swift training framework. Use this file
 as the dataset input for SFT training.

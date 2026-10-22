@@ -59,7 +59,7 @@ from visharness.tools.errors import ToolOOMRetriesExhaustedError
 
 def test_resolve_save_path_uses_project_root_for_relative_paths(tmp_path):
     absolute_path = tmp_path / "trajectory-output"
-    relative_path = Path("training_data/SFT/Kimi-K2.5-VisionAgent-4K")
+    relative_path = Path("training_data/SFT/Kimi-K2.5-VisHarness-4K")
 
     assert _resolve_save_path(absolute_path) == absolute_path
     assert _resolve_save_path(relative_path) == trajectory_config.PROJECT_ROOT / relative_path

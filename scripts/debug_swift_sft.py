@@ -28,11 +28,17 @@ seed_everything(42)
 
 # ================= Configuration =================
 model_id_or_path = '/vepfs-dev/metro/hantao/nwp_bench/fyw/code/fyw/models/LLM/Qwen3-VL-8B-Thinking/'  # Replace with the local model path.
-dataset_path = (
+dataset_dir = (
+    project_root
+    / "training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisHarness-4K-20260927-patch56k"
+)
+legacy_dataset_dir = (
     project_root
     / "training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k"
-    / "merged_sft_data_swift_cmd.jsonl"
 )
+if not dataset_dir.exists() and legacy_dataset_dir.is_dir():
+    dataset_dir = legacy_dataset_dir
+dataset_path = dataset_dir / "merged_sft_data_swift_cmd.jsonl"
 os.environ["ROOT_IMAGE_DIR"] = str(dataset_path.parent)
 max_length = 16000
 
