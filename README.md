@@ -738,13 +738,6 @@ training_data/GRPO/verl_visharness_official_val/
 └── images/
 ```
 
-By default, neither parquet embeds the system prompt. During training and
-validation, `VisHarnessDataset` injects the current
-`TRAIN_TEST_SYSTEM_PROMPT` before multimodal prompt-length filtering, while the
-expert and tool invocation schemas are loaded dynamically from the configuration.
-Pass `--embed-system-prompt` to either data-preparation command only when a
-self-contained parquet is required.
-
 Both builders are deterministic when the source data, code version,
 dependencies, command-line arguments, and seed are unchanged. The parquet
 stores absolute image paths, so the datasets should normally be generated on
