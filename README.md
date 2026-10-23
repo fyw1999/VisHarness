@@ -26,6 +26,10 @@
 
 - ✅ [Inference after RL](#inference-after-rl)
 
+- ✅ [Citation](#citation)
+
+- ✅ [Acknowledgements](#acknowledgements)
+
 # Environment Setup
 
 ## Step 1: clone the repository and initialize verl
@@ -871,3 +875,21 @@ the steps in [Inference after SFT](#inference-after-sft), replacing the
 SFT model path with the RL checkpoint path and updating the corresponding
 parameters. The standalone RL inference service uses the main server's
 GPUs `0–3`, while the remote visual experts remain on the expert server.
+
+# Citation
+
+If you find VisHarness useful for your research, please cite our paper:
+
+```bibtex
+@article{fan2026visharness,
+  title={Train the Agent, Not the Expert: Learning to Harness Heterogeneous Experts for Multi-Turn Visual Reasoning},
+  author={Fan, Yaowu and Han, Tao and Du, Dazhao and Ma, Andy J. and Wan, Jia},
+  journal={arXiv preprint arXiv:2605.29894},
+  year={2026},
+  url={https://arxiv.org/abs/2605.29894}
+}
+```
+
+# Acknowledgements
+
+Parts of this codebase are adapted from [OpenThinkIMG](https://github.com/OpenThinkIMG/OpenThinkIMG).
