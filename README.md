@@ -124,9 +124,8 @@ Our setup uses two servers:
 GPU indices are local to each server: the expert server's GPUs `0–3` are not
 the main server's GPUs `0–3`. The main-server stages reuse the same GPUs and
 must run sequentially. Before switching stages, stop the previous model
-service or training process (for a foreground service, press `Ctrl+C` in
-its launch terminal), and wait for its processes to exit and release GPU
-memory. The teacher and standalone inference services also share port `8000`.
+service or training process, and wait for its processes to exit and release
+GPU memory. The teacher and standalone inference services also share port `8000`.
 The remote visual experts can remain running during these switches.
 
 If deploying everything on one server, assign visual experts to GPUs that do
