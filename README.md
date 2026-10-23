@@ -592,8 +592,9 @@ dataset takes approximately 2 hours and 45 minutes (roughly 3 hours) on eight
 NVIDIA A100-SXM4-80GB GPUs. The actual runtime depends on the hardware, dataset
 size, and training configuration.
 
-Run the following script to print an encoded training sample to the console
-and see what the data looks like during SFT training:
+Set `model_id_or_path` and `dataset_dir` in the script to your model path and
+SFT dataset directory. Then run it to print an encoded training sample to the
+console and see what the data looks like during SFT training:
 
 ```bash
 python scripts/debug_swift_sft.py

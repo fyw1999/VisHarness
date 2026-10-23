@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import subprocess
@@ -103,6 +104,46 @@ def test_sft_launcher_dataset_selection_without_starting_training(tmp_path, case
     assert args[args.index("--dataset") + 1] == str(expected / "merged_sft_data_swift_cmd.jsonl")
     assert captured["image_root"] == str(expected)
     assert args[args.index("--output_dir") + 1] == "checkpoints/sft/Qwen3-VL-8B-Thinking"
+
+
+@pytest.mark.parametrize("directory_exists", ["current", "old", "neither"])
+def test_sft_debug_helper_does_not_fall_back_to_old_dataset_directory(tmp_path, directory_exists):
+    project_root = Path(__file__).resolve().parents[2]
+    helpers = [
+        project_root / "scripts/debug_swift_sft.py",
+        project_root / "key_scripts/debug_swift_sft.py",
+    ]
+    helper = next(path for path in helpers if path.is_file())
+    content = helper.read_text()
+    assert "legacy_dataset_dir" not in content
+    assert "VisionAgent-4K" not in content
+
+    fake_project = tmp_path / "project"
+    current = fake_project / "training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisHarness-4K-20260927-patch56k"
+    old = fake_project / "training_data/SFT/KimiK2.5-Qwen3.5_397B_FP8-Merged-VisionAgent-4K-20260927-patch56k"
+    if directory_exists == "current":
+        current.mkdir(parents=True)
+    elif directory_exists == "old":
+        old.mkdir(parents=True)
+
+    # Execute only the path configuration, without importing Swift, loading
+    # a model, changing CUDA visibility, or touching the actual training data.
+    tree = ast.parse(content)
+    config_nodes = [
+        node for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id in {"dataset_dir", "dataset_path"}
+                for target in node.targets)
+    ]
+    assert len(config_nodes) == 2
+    namespace = {"project_root": fake_project}
+    exec(compile(ast.Module(body=config_nodes, type_ignores=[]), str(helper), "exec"), namespace)
+    assert namespace["dataset_dir"] == current
+    assert namespace["dataset_path"] == current / "merged_sft_data_swift_cmd.jsonl"
+
+    readme = (project_root / "README.md").read_text()
+    assert "Set `model_id_or_path` and `dataset_dir` in the script" in readme
+    assert f"python {helper.relative_to(project_root)}" in readme
 
 
 def answer_snapshot(
