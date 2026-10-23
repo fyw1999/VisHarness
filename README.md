@@ -610,8 +610,7 @@ Download it to run the inference steps below without training the model yourself
 
 Wait for SFT training to finish, or stop it, before deploying the inference
 service on the main server's GPUs `0–3`. Ensure these GPUs and port `8000`
-are free. The experts continue to use the separate expert server's GPUs
-`0–3`; they do not compete with this inference service.
+are free.
 
 Edit
 `recipe/visharness/scripts/trajectory_runner/start_vLLM_VisHarness.bash` and set
