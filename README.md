@@ -893,3 +893,4 @@ If you find VisHarness useful for your research, please cite our paper:
 # Acknowledgements
 
 Parts of this codebase are adapted from [OpenThinkIMG](https://github.com/OpenThinkIMG/OpenThinkIMG).
+Please consider citing the corresponding works if you use those components.
