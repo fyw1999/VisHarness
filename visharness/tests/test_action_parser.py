@@ -191,6 +191,24 @@ def test_qwen3_5_json_parameters_and_plain_text_parameters():
     assert action.arguments == {"images": ["img_0"], "phrase": "the person on the left"}
 
 
+@pytest.mark.parametrize("parameter_name", ["", " ", "\t", "\n"])
+@pytest.mark.parametrize("with_valid_parameter", [False, True])
+def test_qwen3_5_rejects_empty_parameter_name(parameter_name, with_valid_parameter):
+    parameters = '<parameter=images>["img_0"]</parameter>' if with_valid_parameter else ""
+    parameters += f"<parameter={parameter_name}>value</parameter>"
+    completion = (
+        "<think>Use one tool.</think><tool_call><function=PhraseToPoint>"
+        f"{parameters}</function></tool_call>"
+    )
+
+    action = parse_action(completion, model_family="qwen3_5")
+
+    assert action.action_type == "invalid"
+    assert action.error == (
+        "Incorrect tool call format: The parameter name in <parameter=Name> must be a non-empty string."
+    )
+
+
 def test_qwen3_5_rejects_invalid_json_parameter():
     completion = """
 <think>Use one tool.</think>

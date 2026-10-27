@@ -178,13 +178,17 @@ def _parse_qwen3_5_tool_call(tool_content: str) -> ParsedAction:
 
     function_name = function_match.group(1).strip()
     if not function_name:
-        return _invalid("Incorrect tool call format: The function name must not be empty.")
+        return _invalid("Incorrect tool call format: The function name in <function=Name> must be a non-empty string.")
 
     arguments: dict[str, Any] = {}
     parameter_count = 0
-    for parameter_match in re.finditer(r"<parameter=([^>]+)>(.*?)</parameter>", function_match.group(2), re.DOTALL):
+    for parameter_match in re.finditer(r"<parameter=([^>]*)>(.*?)</parameter>", function_match.group(2), re.DOTALL):
         parameter_count += 1
         parameter_name = parameter_match.group(1).strip()
+        if not parameter_name:
+            return _invalid(
+                "Incorrect tool call format: The parameter name in <parameter=Name> must be a non-empty string."
+            )
         parsed_value = _parse_qwen3_5_parameter(parameter_name, parameter_match.group(2))
         if isinstance(parsed_value, ParsedAction):
             return parsed_value
