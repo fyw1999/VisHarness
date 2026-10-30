@@ -4,11 +4,14 @@
   <a href="https://arxiv.org/abs/2605.29894"><img src="https://img.shields.io/badge/arXiv-2605.29894-b31b1b" alt="arXiv"></a>
   <img src="https://img.shields.io/badge/NeurIPS-2026-007ec6" alt="NeurIPS 2026">
   <a href="https://huggingface.co/datasets/fyw1999/VisHarness-SFT-Data"><img src="https://img.shields.io/badge/SFT%20Dataset-Hugging%20Face-ffd21e" alt="SFT Dataset"></a>
-  <a href="https://huggingface.co/fyw1999/VisHarness-SFT-Qwen3-VL-8B-Thinking"><img src="https://img.shields.io/badge/SFT%20Weights-Hugging%20Face-ffd21e" alt="SFT Weights"></a>
-  <a href="https://huggingface.co/fyw1999/VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550"><img src="https://img.shields.io/badge/RL%20Weights-Hugging%20Face-ffd21e" alt="RL Weights"></a>
+  <a href="https://huggingface.co/fyw1999/VisHarness-SFT-Only-Qwen3-VL-8B-Thinking"><img src="https://img.shields.io/badge/SFT--Only-Hugging%20Face-ffd21e" alt="SFT-Only Weights"></a>
+  <a href="https://huggingface.co/fyw1999/VisHarness-GRPO-Only-Qwen3-VL-8B-Thinking-step470"><img src="https://img.shields.io/badge/GRPO--Only-Hugging%20Face-ffd21e" alt="GRPO-Only Weights"></a>
+  <a href="https://huggingface.co/fyw1999/VisHarness-SFT-GRPO-Qwen3-VL-8B-Thinking-step550"><img src="https://img.shields.io/badge/SFT--GRPO-Hugging%20Face-ffd21e" alt="SFT-GRPO Weights"></a>
 </p>
 
 # Catalog
+
+- ✅ [Model Checkpoints](#model-checkpoints)
 
 - ✅ [Environment Setup](#environment-setup)
 
@@ -29,6 +32,25 @@
 - ✅ [Citation](#citation)
 
 - ✅ [Acknowledgements](#acknowledgements)
+
+# Model Checkpoints
+
+All three checkpoints use Qwen3-VL-8B-Thinking:
+
+| Checkpoint | Training stages | Meaning |
+| --- | --- | --- |
+| [SFT-Only](https://huggingface.co/fyw1999/VisHarness-SFT-Only-Qwen3-VL-8B-Thinking) | Qwen3-VL-8B-Thinking → SFT | Cold-start SFT checkpoint at optimizer step 105; no GRPO training. |
+| [GRPO-Only, step470](https://huggingface.co/fyw1999/VisHarness-GRPO-Only-Qwen3-VL-8B-Thinking-step470) | Qwen3-VL-8B-Thinking → GRPO | Direct RL without VisHarness SFT; the no-SFT ablation, selected at RL step 470. |
+| [SFT-GRPO, step550](https://huggingface.co/fyw1999/VisHarness-SFT-GRPO-Qwen3-VL-8B-Thinking-step550) | Qwen3-VL-8B-Thinking → SFT → GRPO | Main VisHarness model, initialized from SFT-Only and selected at RL step 550. |
+
+The two GRPO checkpoints were selected by the highest mean validation reward
+within their respective runs. The step suffix refers to the RL global step,
+not the SFT step. Use **SFT-GRPO, step550** for the main VisHarness model and
+**GRPO-Only, step470** for the no-SFT comparison. Full agent inference requires
+the visual expert services described below.
+
+Download the chosen checkpoint from its link above and use its local directory
+as `MODEL` and `model_args.tokenizer_path` in the inference instructions.
 
 # Environment Setup
 
@@ -604,9 +626,11 @@ console and see what the data looks like during SFT training:
 python scripts/debug_swift_sft.py
 ```
 
-Our SFT-trained model is available at
-[VisHarness-SFT-Qwen3-VL-8B-Thinking](https://huggingface.co/fyw1999/VisHarness-SFT-Qwen3-VL-8B-Thinking).
-Download it to run the inference steps below without training the model yourself.
+Our SFT-only model is available at
+[VisHarness-SFT-Only-Qwen3-VL-8B-Thinking](https://huggingface.co/fyw1999/VisHarness-SFT-Only-Qwen3-VL-8B-Thinking).
+It is the cold-start SFT checkpoint at optimizer step 105 and has not undergone
+GRPO training. Download it to run the inference steps below without training
+the model yourself.
 
 # Inference after SFT
 
@@ -863,10 +887,16 @@ Validation reward during RL training (`val-core/evaluation_reward_mean`):
 
 ![Validation reward during RL training](assets/rl_validation_reward.png)
 
-Our RL-trained model is available at
-[VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550](https://huggingface.co/fyw1999/VisHarness-GRPO-Qwen3-VL-8B-Thinking-step550).
-This checkpoint was selected for its highest average reward on the validation
-set and can be downloaded directly for inference.
+Our main VisHarness model is available at
+[VisHarness-SFT-GRPO-Qwen3-VL-8B-Thinking-step550](https://huggingface.co/fyw1999/VisHarness-SFT-GRPO-Qwen3-VL-8B-Thinking-step550).
+It was initialized from the SFT-only checkpoint and then trained with GRPO.
+Step 550 was selected by the highest mean validation reward in that run.
+
+For the no-SFT ablation, use
+[VisHarness-GRPO-Only-Qwen3-VL-8B-Thinking-step470](https://huggingface.co/fyw1999/VisHarness-GRPO-Only-Qwen3-VL-8B-Thinking-step470).
+It was trained with GRPO directly from Qwen3-VL-8B-Thinking, without the
+VisHarness SFT stage. Step 470 was selected by the highest mean validation
+reward in its own run. Both checkpoints can be downloaded directly for inference.
 
 # Inference after RL
 
