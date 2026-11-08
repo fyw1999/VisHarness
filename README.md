@@ -1,12 +1,16 @@
-# Train the Agent, Not the Expert: Learning to Harness Heterogeneous Experts for Multi-Turn Visual Reasoning (NeurIPS 2026)
+<h1 align="center">VisHarness | NeurIPS 2026</h1>
+
+<h3 align="center">
+  Train the Agent, Not the Expert: Learning to Harness<br>
+  Heterogeneous Experts for Multi-Turn Visual Reasoning
+</h3>
 
 <p align="center">
-  <a href="https://arxiv.org/abs/2605.29894"><img src="https://img.shields.io/badge/arXiv-2605.29894-b31b1b" alt="arXiv"></a>
-  <img src="https://img.shields.io/badge/NeurIPS-2026-007ec6" alt="NeurIPS 2026">
-  <a href="https://huggingface.co/datasets/fyw1999/VisHarness-SFT-Data"><img src="https://img.shields.io/badge/SFT%20Dataset-Hugging%20Face-ffd21e" alt="SFT Dataset"></a>
-  <a href="https://huggingface.co/fyw1999/VisHarness-SFT-Only-Qwen3-VL-8B-Thinking"><img src="https://img.shields.io/badge/VisHarness--SFT-Hugging%20Face-ffd21e" alt="VisHarness-SFT Weights"></a>
-  <a href="https://huggingface.co/fyw1999/VisHarness-GRPO-Only-Qwen3-VL-8B-Thinking-step470"><img src="https://img.shields.io/badge/VisHarness--RL-Hugging%20Face-ffd21e" alt="VisHarness-RL Weights"></a>
-  <a href="https://huggingface.co/fyw1999/VisHarness-SFT-GRPO-Qwen3-VL-8B-Thinking-step550"><img src="https://img.shields.io/badge/VisHarness-Hugging%20Face-ffd21e" alt="VisHarness Weights"></a>
+  <a href="https://arxiv.org/abs/2605.29894"><img src="https://img.shields.io/badge/arXiv-2605.29894-b31b1b?style=flat-square" alt="arXiv Paper"></a>
+  <a href="https://huggingface.co/datasets/fyw1999/VisHarness-SFT-Data"><img src="https://img.shields.io/badge/SFT%20Dataset-Hugging%20Face-ffd21e?style=flat-square" alt="SFT Dataset"></a>
+  <a href="https://huggingface.co/fyw1999/VisHarness-SFT-Only-Qwen3-VL-8B-Thinking"><img src="https://img.shields.io/badge/VisHarness--SFT-Hugging%20Face-ffd21e?style=flat-square" alt="VisHarness-SFT Weights"></a>
+  <a href="https://huggingface.co/fyw1999/VisHarness-GRPO-Only-Qwen3-VL-8B-Thinking-step470"><img src="https://img.shields.io/badge/VisHarness--RL-Hugging%20Face-ffd21e?style=flat-square" alt="VisHarness-RL Weights"></a>
+  <a href="https://huggingface.co/fyw1999/VisHarness-SFT-GRPO-Qwen3-VL-8B-Thinking-step550"><img src="https://img.shields.io/badge/VisHarness-Hugging%20Face-ffd21e?style=flat-square" alt="VisHarness Weights"></a>
 </p>
 
 # Catalog
